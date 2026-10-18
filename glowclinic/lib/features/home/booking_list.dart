@@ -5,6 +5,7 @@ import 'package:glowclinic/features/booking/zones.dart';
 import 'package:glowclinic/features/payment/payment.dart';
 import 'package:glowclinic/features/lbs/lbs.dart';
 import 'package:glowclinic/features/skin/skin_journal.dart';
+import 'package:glowclinic/features/spin/glowspin.dart';
 
 class BookingList extends StatefulWidget {
   final bool staff;
@@ -25,63 +26,66 @@ class _BL extends State<BookingList> {
   }
 
   Future<List<Map<String, dynamic>>> load() async {
-    final sql =
-        'select b.*, t.nama t_nama, d.nama d_nama, u.nama u_nama '
-        'from bookings b '
-        'join treatments t on t.id = b.treatment_id '
-        'join doctors d on d.id = b.doctor_id '
-        'join users u on u.id = b.user_id '
-        '${widget.staff ? '' : 'where b.user_id = ? '}'
-        'order by b.waktu_utc desc';
+    const baseSql =
+        'SELECT b.*, t.nama AS t_nama, d.nama AS d_nama, '
+        'u.nama AS u_nama FROM bookings b '
+        'JOIN treatments t ON t.id = b.treatment_id '
+        'JOIN doctors d ON d.id = b.doctor_id '
+        'JOIN users u ON u.id = b.user_id ';
 
-    final rows = widget.staff ? await qry(sql) : await qry(sql, [myId]);
+    final sql = widget.staff
+        ? '${baseSql}ORDER BY b.waktu_utc DESC'
+        : '${baseSql}WHERE b.user_id = ? '
+              'ORDER BY b.waktu_utc DESC';
 
-    return List<Map<String, dynamic>>.from(rows);
+    return qry(sql, widget.staff ? [] : [myId]);
   }
 
-  void refresh() {
+  void reload() {
     if (!mounted) return;
-
     setState(() {
       _future = load();
     });
   }
 
-  Future<void> setStatus(Map<String, dynamic> booking, String status) async {
+  Future<void> setStatus(Map b, String status) async {
     if (!widget.staff) return;
+
+    final previousStatus = b['status'];
+
+    if (previousStatus == status) return;
 
     await db.update(
       'bookings',
       {'status': status},
       where: 'id = ?',
-      whereArgs: [booking['id']],
+      whereArgs: [b['id']],
     );
 
-    if (status == 'done') {
-      final noteText = booking['catatan_dokter']?.toString() ?? '';
-
-      final record =
-          'record:${booking['id']}:${sha(noteText)}:'
-          '${DateTime.now().toUtc().toIso8601String()}';
-
-      await Chain.add(record);
+    // Catat ke blockchain hanya saat pertama kali menjadi done.
+    if (status == 'done' && previousStatus != 'done') {
+      await Chain.add(
+        'record:${b['id']}:'
+        '${sha('${b['catatan_dokter'] ?? ''}')}:'
+        '${DateTime.now().toUtc().toIso8601String()}',
+      );
     }
   }
 
-  Future<void> note(BuildContext context, Map<String, dynamic> booking) async {
-    if (!widget.staff || !context.mounted) return;
+  Future<void> note(BuildContext c, Map b) async {
+    if (!widget.staff) return;
 
-    final controller = TextEditingController(
-      text: booking['catatan_dokter']?.toString() ?? '',
+    final ctl = TextEditingController(
+      text: b['catatan_dokter']?.toString() ?? '',
     );
 
     try {
-      final result = await showDialog<bool>(
-        context: context,
-        builder: (dialogContext) => AlertDialog(
+      final ok = await showDialog<bool>(
+        context: c,
+        builder: (d) => AlertDialog(
           title: const Text('Rekam treatment'),
           content: TextField(
-            controller: controller,
+            controller: ctl,
             maxLines: 4,
             decoration: const InputDecoration(
               hintText: 'Tindakan, produk, kondisi kulit',
@@ -89,106 +93,92 @@ class _BL extends State<BookingList> {
           ),
           actions: [
             TextButton(
-              onPressed: () => Navigator.pop(dialogContext, false),
+              onPressed: () => Navigator.pop(d, false),
               child: const Text('Batal'),
             ),
             FilledButton(
-              onPressed: () => Navigator.pop(dialogContext, true),
+              onPressed: () => Navigator.pop(d, true),
               child: const Text('Simpan'),
             ),
           ],
         ),
       );
 
-      if (result != true || !mounted) return;
+      if (ok != true) return;
 
       await db.update(
         'bookings',
-        {'catatan_dokter': controller.text.trim()},
+        {'catatan_dokter': ctl.text.trim()},
         where: 'id = ?',
-        whereArgs: [booking['id']],
+        whereArgs: [b['id']],
       );
-
-      if (!mounted) return;
-
-      snack(this.context, 'Catatan treatment berhasil disimpan.');
     } finally {
-      controller.dispose();
+      ctl.dispose();
     }
   }
 
-  Future<void> act(
-    BuildContext context,
-    Map<String, dynamic> booking,
-    String value,
-  ) async {
+  Future<void> act(BuildContext c, Map b, String v) async {
     try {
-      switch (value) {
+      switch (v) {
         case 'info':
-          if (!context.mounted) return;
-          snack(context, 'Status booking: ${booking['status']}');
-          break;
+          return;
 
         case 'bayar':
-          if (widget.staff || !context.mounted) return;
-          await payQris(context, booking);
+          await payQris(c, b);
           break;
 
         case 'lunas':
-          if (!widget.staff || !context.mounted) return;
-          await confirmPaid(context, booking);
+          await confirmPaid(c, b);
           break;
 
         case 'checkin':
-          if (widget.staff || !context.mounted) return;
-          await doCheckIn(context, booking);
+          await doCheckIn(c, b);
           break;
 
         case 'foto':
-          if (!context.mounted) return;
-
           await Navigator.push(
-            context,
-            MaterialPageRoute(builder: (_) => PhotoScreen(booking)),
+            c,
+            MaterialPageRoute(builder: (_) => PhotoScreen(b)),
+          );
+          break;
+
+        case 'spin':
+          await Navigator.push(
+            c,
+            MaterialPageRoute(builder: (_) => SpinScreen(b)),
           );
           break;
 
         case 'catatan':
-          if (!widget.staff || !context.mounted) return;
-          await note(context, booking);
+          await note(c, b);
           break;
 
         default:
-          if (!widget.staff) return;
-
-          await setStatus(booking, value);
-
-          if (!mounted) return;
-
-          snack(this.context, 'Status booking diperbarui.');
+          await setStatus(b, v);
       }
-    } catch (_) {
+
       if (!mounted) return;
-      snack(this.context, 'Gagal memproses booking.');
-    } finally {
-      if (mounted) {
-        refresh();
-      }
+      reload();
+    } catch (e) {
+      if (!mounted) return;
+
+      ScaffoldMessenger.of(context)
+          .showSnackBar(SnackBar(content: Text('Aksi gagal: $e')));
+
+      reload();
     }
   }
 
-  String formatTime(dynamic value) {
-    if (value == null) return 'Waktu belum tersedia';
-
+  String bookingTime(dynamic value) {
     try {
       return zoneText(DateTime.parse(value.toString()).toUtc());
     } catch (_) {
-      return 'Format waktu tidak valid';
+      return 'Waktu booking tidak valid';
     }
   }
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext c) {
     return FutureBuilder<List<Map<String, dynamic>>>(
       future: _future,
       builder: (context, snapshot) {
@@ -197,12 +187,9 @@ class _BL extends State<BookingList> {
             child: Column(
               mainAxisSize: MainAxisSize.min,
               children: [
-                const Text('Gagal memuat daftar booking.'),
+                Text('Gagal memuat booking: ${snapshot.error}'),
                 const SizedBox(height: 8),
-                OutlinedButton(
-                  onPressed: refresh,
-                  child: const Text('Coba Lagi'),
-                ),
+                FilledButton(onPressed: reload, child: const Text('Coba lagi')),
               ],
             ),
           );
@@ -218,87 +205,83 @@ class _BL extends State<BookingList> {
           return const Center(child: Text('Belum ada booking'));
         }
 
-        return RefreshIndicator(
-          onRefresh: () async {
-            final future = load();
+        return ListView.builder(
+          itemCount: bookings.length,
+          itemBuilder: (context, index) {
+            final b = bookings[index];
 
-            setState(() {
-              _future = future;
-            });
+            final status = b['status']?.toString() ?? '-';
+            final paymentStatus = b['status_bayar']?.toString() ?? '-';
+            final hasPrize = b['spin_hadiah'] != null;
 
-            await future;
-          },
-          child: ListView.builder(
-            physics: const AlwaysScrollableScrollPhysics(),
-            itemCount: bookings.length,
-            itemBuilder: (context, index) {
-              final booking = bookings[index];
-              final status = booking['status']?.toString() ?? '-';
-              final paymentStatus = booking['status_bayar']?.toString() ?? '-';
-              final noteText = booking['catatan_dokter']?.toString();
+            final subtitle = [
+              if (widget.staff) b['u_nama']?.toString() ?? '',
+              bookingTime(b['waktu_utc']),
+              'Status: $status',
+              'Bayar: $paymentStatus (Rp ${b['total_idr'] ?? 0})',
+              if (b['catatan_dokter'] != null &&
+                  b['catatan_dokter'].toString().isNotEmpty)
+                'Catatan: ${b['catatan_dokter']}',
+              if (hasPrize) 'Hadiah: ${b['spin_hadiah']}',
+            ].where((s) => s.isNotEmpty).join('\n');
 
-              return Card(
-                child: ListTile(
-                  title: Text(
-                    '${booking['t_nama'] ?? '-'} - '
-                    '${booking['d_nama'] ?? '-'}',
-                  ),
-                  subtitle: Text(
-                    '${widget.staff ? '${booking['u_nama'] ?? ''}\n' : ''}'
-                    '${formatTime(booking['waktu_utc'])}\n'
-                    'Status: $status\n'
-                    'Bayar: $paymentStatus '
-                    '(Rp ${booking['total_idr'] ?? 0})'
-                    '${noteText != null && noteText.isNotEmpty ? '\nCatatan: $noteText' : ''}',
-                  ),
-                  isThreeLine: true,
-                  trailing: PopupMenuButton<String>(
-                    onSelected: (value) => act(context, booking, value),
-                    itemBuilder: (_) => widget.staff
-                        ? [
-                            for (final value in [
-                              'confirmed',
-                              'rejected',
-                              'checked_in',
-                              'in_treatment',
-                              'done',
-                              'catatan',
-                              'foto',
-                              'lunas',
-                            ])
-                              PopupMenuItem(value: value, child: Text(value)),
-                          ]
-                        : [
-                            if (paymentStatus != 'lunas' &&
-                                status != 'rejected')
-                              const PopupMenuItem(
-                                value: 'bayar',
-                                child: Text('Bayar QRIS'),
-                              ),
-                            if (status == 'confirmed')
-                              const PopupMenuItem(
-                                value: 'checkin',
-                                child: Text('Check-in'),
-                              ),
-                            if ([
-                              'checked_in',
-                              'in_treatment',
-                              'done',
-                            ].contains(status))
-                              const PopupMenuItem(
-                                value: 'foto',
-                                child: Text('Foto before/after'),
-                              ),
-                            const PopupMenuItem(
-                              value: 'info',
-                              child: Text('Detail'),
-                            ),
-                          ],
-                  ),
+            return Card(
+              child: ListTile(
+                title: Text('${b['t_nama']} - ${b['d_nama']}'),
+                subtitle: Text(subtitle),
+                trailing: PopupMenuButton<String>(
+                  onSelected: (v) => act(context, b, v),
+                  itemBuilder: (_) {
+                    if (widget.staff) {
+                      return [
+                        for (final v in [
+                          'confirmed',
+                          'rejected',
+                          'checked_in',
+                          'in_treatment',
+                          'done',
+                          'catatan',
+                          'foto',
+                          'lunas',
+                        ])
+                          PopupMenuItem(value: v, child: Text(v)),
+                      ];
+                    }
+
+                    return [
+                      if (paymentStatus != 'lunas' && status != 'rejected')
+                        const PopupMenuItem(
+                          value: 'bayar',
+                          child: Text('Bayar QRIS'),
+                        ),
+                      if (status == 'confirmed')
+                        const PopupMenuItem(
+                          value: 'checkin',
+                          child: Text('Check-in'),
+                        ),
+                      if ([
+                        'checked_in',
+                        'in_treatment',
+                        'done',
+                      ].contains(status))
+                        const PopupMenuItem(
+                          value: 'foto',
+                          child: Text('Foto before/after'),
+                        ),
+                      if (status == 'done' &&
+                          paymentStatus == 'lunas' &&
+                          !hasPrize)
+                        const PopupMenuItem(
+                          value: 'spin',
+                          child: Text('GlowSpin'),
+                        ),
+                      const PopupMenuItem(value: 'info', child: Text('Detail')),
+                    ];
+                  },
                 ),
-              );
-            },
-          ),
+              ),
+            );
+          },
         );
       },
     );

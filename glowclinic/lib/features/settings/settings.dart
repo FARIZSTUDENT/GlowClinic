@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:local_auth/local_auth.dart';
 import 'package:glowclinic/core/core.dart';
+import 'package:glowclinic/features/notif/notif.dart';
 import 'package:glowclinic/features/lbs/lbs.dart';
 
 class SettingsScreen extends StatefulWidget {
@@ -12,8 +13,7 @@ class SettingsScreen extends StatefulWidget {
 
 class _ST extends State<SettingsScreen> {
   bool bio = false;
-  bool savingBio = false;
-  bool updatingLocation = false;
+  bool loadingBio = true;
 
   @override
   void initState() {
@@ -22,38 +22,28 @@ class _ST extends State<SettingsScreen> {
   }
 
   Future<void> _loadBio() async {
-    try {
-      final value = await store.read(key: 'bio');
+    final value = await store.read(key: 'bio');
 
-      if (!mounted) return;
+    if (!mounted) return;
 
-      setState(() {
-        bio = value == '1';
-      });
-    } catch (_) {
-      if (!mounted) return;
-      snack(context, 'Gagal membaca pengaturan biometrik.');
-    }
+    setState(() {
+      bio = value == '1';
+      loadingBio = false;
+    });
   }
 
   Future<void> toggle(bool value) async {
-    if (savingBio) return;
+    if (value) {
+      final auth = LocalAuthentication();
 
-    setState(() {
-      savingBio = true;
-    });
-
-    try {
-      if (value) {
-        final auth = LocalAuthentication();
-
+      try {
         final supported = await auth.isDeviceSupported();
         final canCheck = await auth.canCheckBiometrics;
         final available = await auth.getAvailableBiometrics();
 
         if (!supported || !canCheck || available.isEmpty) {
           if (mounted) {
-            snack(context, 'Biometrik belum tersedia di perangkat ini.');
+            snack(context, 'Biometrik belum tersedia atau belum terdaftar');
           }
           return;
         }
@@ -65,53 +55,33 @@ class _ST extends State<SettingsScreen> {
         if (!authenticated) return;
 
         await store.write(key: 'bio', value: '1');
-      } else {
-        await store.delete(key: 'bio');
-      }
-
-      if (!mounted) return;
-
-      setState(() {
-        bio = value;
-      });
-
-      snack(
-        context,
-        value
-            ? 'Login biometrik berhasil diaktifkan.'
-            : 'Login biometrik dinonaktifkan.',
-      );
-    } catch (_) {
-      if (mounted) {
-        snack(context, 'Gagal mengubah pengaturan biometrik.');
-      }
-    } finally {
-      if (mounted) {
-        setState(() {
-          savingBio = false;
-        });
-      }
-    }
-  }
-
-  Future<void> _updateBranchLocation() async {
-    if (updatingLocation) return;
-
-    setState(() {
-      updatingLocation = true;
-    });
-
-    try {
-      final position = await myPos();
-
-      if (!mounted) return;
-
-      if (position == null) {
-        snack(context, 'Aktifkan lokasi dan izinkan akses lokasi.');
+      } catch (e) {
+        if (mounted) {
+          snack(context, 'Autentikasi biometrik gagal');
+        }
         return;
       }
+    } else {
+      await store.delete(key: 'bio');
+    }
 
-      await db.update(
+    if (!mounted) return;
+
+    setState(() => bio = value);
+  }
+
+  Future<void> updateBranchLocation() async {
+    final position = await myPos();
+
+    if (!mounted) return;
+
+    if (position == null) {
+      snack(context, 'Izin lokasi diperlukan');
+      return;
+    }
+
+    try {
+      final result = await db.update(
         'branches',
         {'lat': position.latitude, 'lng': position.longitude},
         where: 'id = ?',
@@ -120,16 +90,34 @@ class _ST extends State<SettingsScreen> {
 
       if (!mounted) return;
 
-      snack(context, 'Lokasi cabang berhasil diperbarui.');
-    } catch (_) {
+      snack(
+        context,
+        result > 0
+            ? 'Lokasi cabang diperbarui'
+            : 'Cabang dengan ID 1 tidak ditemukan',
+      );
+    } catch (e) {
       if (mounted) {
-        snack(context, 'Gagal memperbarui lokasi cabang.');
+        snack(context, 'Gagal memperbarui lokasi cabang');
       }
-    } finally {
+    }
+  }
+
+  Future<void> testNotification() async {
+    try {
+      await notify(
+        999999,
+        'GlowClinic',
+        'Notifikasi berjalan dengan baik',
+        DateTime.now().add(const Duration(seconds: 5)),
+      );
+
       if (mounted) {
-        setState(() {
-          updatingLocation = false;
-        });
+        snack(context, 'Tes notifikasi dijadwalkan');
+      }
+    } catch (e) {
+      if (mounted) {
+        snack(context, 'Gagal menjadwalkan notifikasi');
       }
     }
   }
@@ -144,20 +132,18 @@ class _ST extends State<SettingsScreen> {
             title: const Text('Login dengan biometrik'),
             subtitle: const Text('Sidik jari / wajah saat membuka aplikasi'),
             value: bio,
-            onChanged: savingBio ? null : toggle,
+            onChanged: loadingBio ? null : toggle,
           ),
           ListTile(
             leading: const Icon(Icons.my_location),
             title: const Text('Jadikan lokasi saya sebagai lokasi cabang'),
             subtitle: const Text('Untuk menguji check-in saat demo'),
-            trailing: updatingLocation
-                ? const SizedBox(
-                    width: 20,
-                    height: 20,
-                    child: CircularProgressIndicator(strokeWidth: 2),
-                  )
-                : const Icon(Icons.chevron_right),
-            onTap: updatingLocation ? null : _updateBranchLocation,
+            onTap: updateBranchLocation,
+          ),
+          ListTile(
+            leading: const Icon(Icons.notifications),
+            title: const Text('Tes notifikasi (5 detik)'),
+            onTap: testNotification,
           ),
         ],
       ),

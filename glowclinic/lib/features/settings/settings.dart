@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:local_auth/local_auth.dart';
 import 'package:glowclinic/core/core.dart';
+import 'package:glowclinic/features/lbs/lbs.dart';
 
 class SettingsScreen extends StatefulWidget {
   const SettingsScreen({super.key});
@@ -11,7 +12,8 @@ class SettingsScreen extends StatefulWidget {
 
 class _ST extends State<SettingsScreen> {
   bool bio = false;
-  bool busy = false;
+  bool savingBio = false;
+  bool updatingLocation = false;
 
   @override
   void initState() {
@@ -20,40 +22,45 @@ class _ST extends State<SettingsScreen> {
   }
 
   Future<void> _loadBio() async {
-    final value = await store.read(key: 'bio');
+    try {
+      final value = await store.read(key: 'bio');
 
-    if (!mounted) return;
+      if (!mounted) return;
 
-    setState(() {
-      bio = value == '1';
-    });
+      setState(() {
+        bio = value == '1';
+      });
+    } catch (_) {
+      if (!mounted) return;
+      snack(context, 'Gagal membaca pengaturan biometrik.');
+    }
   }
 
-  Future<void> toggle(bool v) async {
-    if (busy) return;
+  Future<void> toggle(bool value) async {
+    if (savingBio) return;
 
     setState(() {
-      busy = true;
+      savingBio = true;
     });
 
     try {
-      if (v) {
-        final la = LocalAuthentication();
-        final supported = await la.isDeviceSupported();
-        final canCheck = await la.canCheckBiometrics;
+      if (value) {
+        final auth = LocalAuthentication();
 
-        if (!mounted) return;
+        final supported = await auth.isDeviceSupported();
+        final canCheck = await auth.canCheckBiometrics;
+        final available = await auth.getAvailableBiometrics();
 
-        if (!supported || !canCheck) {
-          snack(context, 'Biometrik belum tersedia di perangkat ini');
+        if (!supported || !canCheck || available.isEmpty) {
+          if (mounted) {
+            snack(context, 'Biometrik belum tersedia di perangkat ini.');
+          }
           return;
         }
 
-        final authenticated = await la.authenticate(
+        final authenticated = await auth.authenticate(
           localizedReason: 'Verifikasi untuk mengaktifkan biometrik',
         );
-
-        if (!mounted) return;
 
         if (!authenticated) return;
 
@@ -65,23 +72,70 @@ class _ST extends State<SettingsScreen> {
       if (!mounted) return;
 
       setState(() {
-        bio = v;
+        bio = value;
       });
-    } catch (e) {
+
+      snack(
+        context,
+        value
+            ? 'Login biometrik berhasil diaktifkan.'
+            : 'Login biometrik dinonaktifkan.',
+      );
+    } catch (_) {
       if (mounted) {
-        snack(context, 'Gagal mengubah pengaturan biometrik');
+        snack(context, 'Gagal mengubah pengaturan biometrik.');
       }
     } finally {
       if (mounted) {
         setState(() {
-          busy = false;
+          savingBio = false;
+        });
+      }
+    }
+  }
+
+  Future<void> _updateBranchLocation() async {
+    if (updatingLocation) return;
+
+    setState(() {
+      updatingLocation = true;
+    });
+
+    try {
+      final position = await myPos();
+
+      if (!mounted) return;
+
+      if (position == null) {
+        snack(context, 'Aktifkan lokasi dan izinkan akses lokasi.');
+        return;
+      }
+
+      await db.update(
+        'branches',
+        {'lat': position.latitude, 'lng': position.longitude},
+        where: 'id = ?',
+        whereArgs: [1],
+      );
+
+      if (!mounted) return;
+
+      snack(context, 'Lokasi cabang berhasil diperbarui.');
+    } catch (_) {
+      if (mounted) {
+        snack(context, 'Gagal memperbarui lokasi cabang.');
+      }
+    } finally {
+      if (mounted) {
+        setState(() {
+          updatingLocation = false;
         });
       }
     }
   }
 
   @override
-  Widget build(BuildContext c) {
+  Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(title: const Text('Pengaturan')),
       body: ListView(
@@ -90,7 +144,20 @@ class _ST extends State<SettingsScreen> {
             title: const Text('Login dengan biometrik'),
             subtitle: const Text('Sidik jari / wajah saat membuka aplikasi'),
             value: bio,
-            onChanged: busy ? null : toggle,
+            onChanged: savingBio ? null : toggle,
+          ),
+          ListTile(
+            leading: const Icon(Icons.my_location),
+            title: const Text('Jadikan lokasi saya sebagai lokasi cabang'),
+            subtitle: const Text('Untuk menguji check-in saat demo'),
+            trailing: updatingLocation
+                ? const SizedBox(
+                    width: 20,
+                    height: 20,
+                    child: CircularProgressIndicator(strokeWidth: 2),
+                  )
+                : const Icon(Icons.chevron_right),
+            onTap: updatingLocation ? null : _updateBranchLocation,
           ),
         ],
       ),

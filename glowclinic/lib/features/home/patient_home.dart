@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:glowclinic/features/auth/auth.dart';
 import 'package:glowclinic/features/settings/settings.dart';
 import 'package:glowclinic/features/catalog/catalog.dart';
+import 'package:glowclinic/features/lbs/lbs.dart';
 import 'package:glowclinic/features/home/booking_list.dart';
 
 class PatientHome extends StatefulWidget {
@@ -16,10 +17,12 @@ class _PH extends State<PatientHome> {
   Widget build(BuildContext c) {
     final pages = <Widget>[
       const Catalog(),
+      const BranchMap(),
       BookingList(key: ValueKey(i), staff: false),
     ];
     final dests = <NavigationDestination>[
       const NavigationDestination(icon: Icon(Icons.spa), label: 'Layanan'),
+      const NavigationDestination(icon: Icon(Icons.map), label: 'Cabang'),
       const NavigationDestination(icon: Icon(Icons.event), label: 'Booking'),
     ];
     return Scaffold(

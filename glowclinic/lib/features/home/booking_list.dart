@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:glowclinic/core/core.dart';
 import 'package:glowclinic/features/blockchain/chain.dart';
 import 'package:glowclinic/features/booking/zones.dart';
+import 'package:glowclinic/features/lbs/lbs.dart';
 
 class BookingList extends StatefulWidget {
   final bool staff;
@@ -9,10 +10,10 @@ class BookingList extends StatefulWidget {
   const BookingList({super.key, required this.staff});
 
   @override
-  State<BookingList> createState() => _BookingListState();
+  State<BookingList> createState() => _BL();
 }
 
-class _BookingListState extends State<BookingList> {
+class _BL extends State<BookingList> {
   late Future<List<Map<String, dynamic>>> bookingsFuture;
 
   @override
@@ -24,27 +25,28 @@ class _BookingListState extends State<BookingList> {
   Future<List<Map<String, dynamic>>> load() async {
     final result = await qry(
       'select b.*, '
-      't.nama as t_nama, '
-      'd.nama as d_nama, '
-      'u.nama as u_nama '
+      't.nama t_nama, '
+      'd.nama d_nama, '
+      'u.nama u_nama '
       'from bookings b '
       'join treatments t on t.id = b.treatment_id '
       'join doctors d on d.id = b.doctor_id '
       'join users u on u.id = b.user_id '
-      '${widget.staff ? '' : 'where b.user_id = ? '}'
+      '${widget.staff ? '' : 'where b.user_id=$myId '}'
       'order by b.waktu_utc desc',
-      widget.staff ? [] : [myId],
     );
 
     return List<Map<String, dynamic>>.from(result);
   }
 
-  Future<void> refreshBookings() async {
+  void reload() {
+    if (!mounted) {
+      return;
+    }
+
     setState(() {
       bookingsFuture = load();
     });
-
-    await bookingsFuture;
   }
 
   void showMessage(String message) {
@@ -68,6 +70,8 @@ class _BookingListState extends State<BookingList> {
       whereArgs: [booking['id']],
     );
 
+    booking['status'] = status;
+
     if (status == 'done') {
       final noteText = booking['catatan_dokter']?.toString() ?? '';
       final noteHash = sha(noteText);
@@ -77,12 +81,9 @@ class _BookingListState extends State<BookingList> {
     }
   }
 
-  Future<String?> note(
-    BuildContext context,
-    Map<String, dynamic> booking,
-  ) async {
+  Future<void> note(BuildContext context, Map<String, dynamic> booking) async {
     if (!widget.staff) {
-      return null;
+      return;
     }
 
     final controller = TextEditingController(
@@ -90,39 +91,37 @@ class _BookingListState extends State<BookingList> {
     );
 
     try {
-      final result = await showDialog<bool>(
+      final confirmed = await showDialog<bool>(
         context: context,
-        builder: (dialogContext) {
-          return AlertDialog(
-            title: const Text('Rekam treatment'),
-            content: TextField(
-              controller: controller,
-              maxLines: 4,
-              decoration: const InputDecoration(
-                hintText: 'Tindakan, produk, kondisi kulit',
-                border: OutlineInputBorder(),
-              ),
+        builder: (dialogContext) => AlertDialog(
+          title: const Text('Rekam treatment'),
+          content: TextField(
+            controller: controller,
+            maxLines: 4,
+            decoration: const InputDecoration(
+              hintText: 'Tindakan, produk, kondisi kulit',
+              border: OutlineInputBorder(),
             ),
-            actions: [
-              TextButton(
-                onPressed: () {
-                  Navigator.pop(dialogContext, false);
-                },
-                child: const Text('Batal'),
-              ),
-              FilledButton(
-                onPressed: () {
-                  Navigator.pop(dialogContext, true);
-                },
-                child: const Text('Simpan'),
-              ),
-            ],
-          );
-        },
+          ),
+          actions: [
+            TextButton(
+              onPressed: () {
+                Navigator.pop(dialogContext, false);
+              },
+              child: const Text('Batal'),
+            ),
+            FilledButton(
+              onPressed: () {
+                Navigator.pop(dialogContext, true);
+              },
+              child: const Text('Simpan'),
+            ),
+          ],
+        ),
       );
 
-      if (result != true || !mounted) {
-        return null;
+      if (confirmed != true || !mounted) {
+        return;
       }
 
       final text = controller.text.trim();
@@ -136,7 +135,7 @@ class _BookingListState extends State<BookingList> {
 
       booking['catatan_dokter'] = text;
 
-      return text;
+      showMessage('Catatan treatment berhasil disimpan.');
     } finally {
       controller.dispose();
     }
@@ -153,49 +152,33 @@ class _BookingListState extends State<BookingList> {
     }
 
     try {
-      if (value == 'catatan') {
-        final updatedNote = await note(context, booking);
-
-        if (updatedNote == null) {
+      if (value == 'checkin') {
+        if (booking['status'] != 'confirmed') {
+          showMessage('Check-in hanya tersedia untuk booking terkonfirmasi.');
           return;
         }
 
-        showMessage('Catatan treatment berhasil disimpan.');
+        await doCheckIn(context, booking);
+      } else if (value == 'catatan') {
+        await note(context, booking);
       } else {
         await setStatus(booking, value);
-
-        if (value == 'done') {
-          showMessage(
-            'Status selesai disimpan dan catatan dikirim ke blockchain.',
-          );
-        } else {
-          showMessage('Status booking diperbarui.');
-        }
       }
     } catch (e) {
-      showMessage(
-        value == 'done'
-            ? 'Status mungkin sudah tersimpan, tetapi pencatatan '
-                  'blockchain gagal. Periksa kembali sebelum mencoba lagi.'
-            : 'Operasi gagal. Periksa koneksi dan coba lagi.',
-      );
+      showMessage('Operasi gagal. Periksa koneksi dan status booking.');
     } finally {
-      if (mounted) {
-        setState(() {
-          bookingsFuture = load();
-        });
-      }
+      reload();
     }
   }
 
-  String formatBookingTime(dynamic value) {
-    final parsed = DateTime.tryParse(value?.toString() ?? '');
+  String bookingTime(dynamic value) {
+    final date = DateTime.tryParse(value?.toString() ?? '');
 
-    if (parsed == null) {
+    if (date == null) {
       return 'Waktu booking tidak valid';
     }
 
-    return zoneText(parsed.toUtc());
+    return zoneText(date.toUtc());
   }
 
   @override
@@ -205,25 +188,16 @@ class _BookingListState extends State<BookingList> {
       builder: (context, snapshot) {
         if (snapshot.hasError) {
           return Center(
-            child: Padding(
-              padding: const EdgeInsets.all(16),
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  const Icon(Icons.error_outline, size: 40),
-                  const SizedBox(height: 8),
-                  const Text('Gagal memuat daftar booking.'),
-                  const SizedBox(height: 8),
-                  OutlinedButton(
-                    onPressed: () {
-                      setState(() {
-                        bookingsFuture = load();
-                      });
-                    },
-                    child: const Text('Coba Lagi'),
-                  ),
-                ],
-              ),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                const Text('Gagal memuat daftar booking.'),
+                const SizedBox(height: 8),
+                OutlinedButton(
+                  onPressed: reload,
+                  child: const Text('Coba Lagi'),
+                ),
+              ],
             ),
           );
         }
@@ -239,29 +213,37 @@ class _BookingListState extends State<BookingList> {
         }
 
         return RefreshIndicator(
-          onRefresh: refreshBookings,
+          onRefresh: () async {
+            final future = load();
+
+            setState(() {
+              bookingsFuture = future;
+            });
+
+            await future;
+          },
           child: ListView.builder(
             physics: const AlwaysScrollableScrollPhysics(),
             itemCount: bookings.length,
             itemBuilder: (context, index) {
               final booking = bookings[index];
-              final treatmentName = booking['t_nama']?.toString() ?? 'Layanan';
-              final doctorName = booking['d_nama']?.toString() ?? 'Dokter';
               final status = booking['status']?.toString() ?? 'pending';
-              final doctorNote = booking['catatan_dokter']?.toString();
+              final noteText = booking['catatan_dokter']?.toString();
 
               final subtitle = [
                 if (widget.staff) 'Pasien: ${booking['u_nama'] ?? '-'}',
-                formatBookingTime(booking['waktu_utc']),
+                bookingTime(booking['waktu_utc']),
                 'Status: $status',
-                if (doctorNote != null && doctorNote.isNotEmpty)
-                  'Catatan: $doctorNote',
+                if (noteText != null && noteText.isNotEmpty)
+                  'Catatan: $noteText',
               ].join('\n');
 
               return Card(
-                margin: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
                 child: ListTile(
-                  title: Text('$treatmentName - $doctorName'),
+                  title: Text(
+                    '${booking['t_nama'] ?? 'Layanan'} - '
+                    '${booking['d_nama'] ?? 'Dokter'}',
+                  ),
                   subtitle: Text(subtitle),
                   isThreeLine: true,
                   trailing: PopupMenuButton<String>(
@@ -270,39 +252,41 @@ class _BookingListState extends State<BookingList> {
                       act(context, booking, value);
                     },
                     itemBuilder: (_) {
-                      if (!widget.staff) {
+                      if (widget.staff) {
                         return const [
-                          PopupMenuItem<String>(
-                            value: 'info',
-                            child: Text('Detail'),
+                          PopupMenuItem(
+                            value: 'confirmed',
+                            child: Text('confirmed'),
+                          ),
+                          PopupMenuItem(
+                            value: 'rejected',
+                            child: Text('rejected'),
+                          ),
+                          PopupMenuItem(
+                            value: 'checked_in',
+                            child: Text('checked_in'),
+                          ),
+                          PopupMenuItem(
+                            value: 'in_treatment',
+                            child: Text('in_treatment'),
+                          ),
+                          PopupMenuItem(value: 'done', child: Text('done')),
+                          PopupMenuItem(
+                            value: 'catatan',
+                            child: Text('Rekam treatment'),
                           ),
                         ];
                       }
 
-                      return const [
-                        PopupMenuItem<String>(
-                          value: 'confirmed',
-                          child: Text('Konfirmasi'),
-                        ),
-                        PopupMenuItem<String>(
-                          value: 'rejected',
-                          child: Text('Tolak'),
-                        ),
-                        PopupMenuItem<String>(
-                          value: 'checked_in',
-                          child: Text('Pasien hadir'),
-                        ),
-                        PopupMenuItem<String>(
-                          value: 'in_treatment',
-                          child: Text('Sedang treatment'),
-                        ),
-                        PopupMenuItem<String>(
-                          value: 'catatan',
-                          child: Text('Rekam treatment'),
-                        ),
-                        PopupMenuItem<String>(
-                          value: 'done',
-                          child: Text('Selesai'),
+                      return [
+                        if (status == 'confirmed')
+                          const PopupMenuItem(
+                            value: 'checkin',
+                            child: Text('Check-in'),
+                          ),
+                        const PopupMenuItem(
+                          value: 'info',
+                          child: Text('Detail'),
                         ),
                       ];
                     },

@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:glowclinic/features/auth/auth.dart';
+import 'package:glowclinic/features/settings/settings.dart';
 
 class PatientHome extends StatefulWidget {
   const PatientHome({super.key});
@@ -17,6 +18,13 @@ class _PH extends State<PatientHome> {
       appBar: AppBar(
         title: const Text('GlowClinic'),
         actions: [
+          IconButton(
+            icon: const Icon(Icons.settings),
+            onPressed: () => Navigator.push(
+              c,
+              MaterialPageRoute(builder: (_) => const SettingsScreen()),
+            ),
+          ),
           IconButton(
             icon: const Icon(Icons.logout),
             onPressed: () => logout(c),

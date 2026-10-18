@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:glowclinic/features/auth/auth.dart';
+import 'package:glowclinic/features/settings/settings.dart';
+import 'package:glowclinic/features/blockchain/chain.dart';
 
 class StaffHome extends StatefulWidget {
   const StaffHome({super.key});
@@ -14,6 +16,27 @@ class _SH extends State<StaffHome> {
     appBar: AppBar(
       title: const Text('Dashboard Staf'),
       actions: [
+        IconButton(
+          icon: const Icon(Icons.settings),
+          onPressed: () => Navigator.push(
+            c,
+            MaterialPageRoute(builder: (_) => const SettingsScreen()),
+          ),
+        ),
+        IconButton(
+          icon: const Icon(Icons.verified),
+          tooltip: 'Verifikasi blockchain',
+          onPressed: () async {
+            final ok = await Chain.valid();
+            if (!c.mounted) return;
+            showDialog(
+              context: c,
+              builder: (_) => AlertDialog(
+                title: Text(ok ? 'Rantai VALID' : 'Rantai RUSAK'),
+              ),
+            );
+          },
+        ),
         IconButton(icon: const Icon(Icons.logout), onPressed: () => logout(c)),
       ],
     ),

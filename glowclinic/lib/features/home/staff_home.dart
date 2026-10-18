@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:glowclinic/features/auth/auth.dart';
 import 'package:glowclinic/features/settings/settings.dart';
 import 'package:glowclinic/features/blockchain/chain.dart';
+import 'package:glowclinic/features/home/booking_list.dart';
 
 class StaffHome extends StatefulWidget {
   const StaffHome({super.key});
@@ -40,6 +41,6 @@ class _SH extends State<StaffHome> {
         IconButton(icon: const Icon(Icons.logout), onPressed: () => logout(c)),
       ],
     ),
-    body: const Center(child: Text('Dashboard staf')),
+    body: BookingList(key: ValueKey(n), staff: true),
   );
 }

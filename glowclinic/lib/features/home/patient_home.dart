@@ -4,6 +4,7 @@ import 'package:glowclinic/features/settings/settings.dart';
 import 'package:glowclinic/features/catalog/catalog.dart';
 import 'package:glowclinic/features/lbs/lbs.dart';
 import 'package:glowclinic/features/home/booking_list.dart';
+import 'package:glowclinic/features/profile/profile.dart';
 
 class PatientHome extends StatefulWidget {
   const PatientHome({super.key});
@@ -19,11 +20,13 @@ class _PH extends State<PatientHome> {
       const Catalog(),
       const BranchMap(),
       BookingList(key: ValueKey(i), staff: false),
+      const ProfileScreen(),
     ];
     final dests = <NavigationDestination>[
       const NavigationDestination(icon: Icon(Icons.spa), label: 'Layanan'),
       const NavigationDestination(icon: Icon(Icons.map), label: 'Cabang'),
       const NavigationDestination(icon: Icon(Icons.event), label: 'Booking'),
+      const NavigationDestination(icon: Icon(Icons.person), label: 'Profil'),
     ];
     return Scaffold(
       appBar: AppBar(

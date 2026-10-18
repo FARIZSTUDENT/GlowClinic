@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:glowclinic/features/auth/auth.dart';
 import 'package:glowclinic/features/settings/settings.dart';
+import 'package:glowclinic/features/catalog/catalog.dart';
 
 class PatientHome extends StatefulWidget {
   const PatientHome({super.key});
@@ -12,8 +13,10 @@ class _PH extends State<PatientHome> {
   int i = 0;
   @override
   Widget build(BuildContext c) {
-    final pages = <Widget>[];
-    final dests = <NavigationDestination>[];
+    final pages = <Widget>[const Catalog()];
+    final dests = <NavigationDestination>[
+      const NavigationDestination(icon: Icon(Icons.spa), label: 'Layanan'),
+    ];
     return Scaffold(
       appBar: AppBar(
         title: const Text('GlowClinic'),

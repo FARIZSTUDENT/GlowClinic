@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:glowclinic/core/core.dart';
 import 'package:glowclinic/features/blockchain/chain.dart';
 import 'package:glowclinic/features/booking/zones.dart';
+import 'package:glowclinic/features/payment/payment.dart';
 import 'package:glowclinic/features/lbs/lbs.dart';
 import 'package:glowclinic/features/skin/skin_journal.dart';
 
@@ -125,13 +126,21 @@ class _BL extends State<BookingList> {
       switch (value) {
         case 'info':
           if (!context.mounted) return;
-
           snack(context, 'Status booking: ${booking['status']}');
+          break;
+
+        case 'bayar':
+          if (widget.staff || !context.mounted) return;
+          await payQris(context, booking);
+          break;
+
+        case 'lunas':
+          if (!widget.staff || !context.mounted) return;
+          await confirmPaid(context, booking);
           break;
 
         case 'checkin':
           if (widget.staff || !context.mounted) return;
-
           await doCheckIn(context, booking);
           break;
 
@@ -146,7 +155,6 @@ class _BL extends State<BookingList> {
 
         case 'catatan':
           if (!widget.staff || !context.mounted) return;
-
           await note(context, booking);
           break;
 
@@ -161,7 +169,6 @@ class _BL extends State<BookingList> {
       }
     } catch (_) {
       if (!mounted) return;
-
       snack(this.context, 'Gagal memproses booking.');
     } finally {
       if (mounted) {
@@ -170,10 +177,8 @@ class _BL extends State<BookingList> {
     }
   }
 
-  String _formatBookingTime(dynamic value) {
-    if (value == null) {
-      return 'Waktu belum tersedia';
-    }
+  String formatTime(dynamic value) {
+    if (value == null) return 'Waktu belum tersedia';
 
     try {
       return zoneText(DateTime.parse(value.toString()).toUtc());
@@ -228,9 +233,8 @@ class _BL extends State<BookingList> {
             itemCount: bookings.length,
             itemBuilder: (context, index) {
               final booking = bookings[index];
-
               final status = booking['status']?.toString() ?? '-';
-
+              final paymentStatus = booking['status_bayar']?.toString() ?? '-';
               final noteText = booking['catatan_dokter']?.toString();
 
               return Card(
@@ -241,8 +245,10 @@ class _BL extends State<BookingList> {
                   ),
                   subtitle: Text(
                     '${widget.staff ? '${booking['u_nama'] ?? ''}\n' : ''}'
-                    '${_formatBookingTime(booking['waktu_utc'])}\n'
-                    'Status: $status'
+                    '${formatTime(booking['waktu_utc'])}\n'
+                    'Status: $status\n'
+                    'Bayar: $paymentStatus '
+                    '(Rp ${booking['total_idr'] ?? 0})'
                     '${noteText != null && noteText.isNotEmpty ? '\nCatatan: $noteText' : ''}',
                   ),
                   isThreeLine: true,
@@ -258,10 +264,17 @@ class _BL extends State<BookingList> {
                               'done',
                               'catatan',
                               'foto',
+                              'lunas',
                             ])
                               PopupMenuItem(value: value, child: Text(value)),
                           ]
                         : [
+                            if (paymentStatus != 'lunas' &&
+                                status != 'rejected')
+                              const PopupMenuItem(
+                                value: 'bayar',
+                                child: Text('Bayar QRIS'),
+                              ),
                             if (status == 'confirmed')
                               const PopupMenuItem(
                                 value: 'checkin',

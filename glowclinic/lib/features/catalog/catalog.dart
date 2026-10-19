@@ -116,7 +116,7 @@ class _DoctorSectionState extends State<DoctorSection> {
   late Future<List<Map<String, dynamic>>> _doctorFuture;
   Timer? _autoSlideTimer;
 
-  static const double _cardWidth = 145;
+  static const double _cardWidth = 160;
   static const double _cardGap = 10;
 
   @override
@@ -472,7 +472,7 @@ class _DoctorSectionState extends State<DoctorSection> {
               ),
             ),
             SizedBox(
-              height: 210,
+              height: 248,
               child: ScrollConfiguration(
                 behavior: const MaterialScrollBehavior().copyWith(
                   dragDevices: {
@@ -519,7 +519,7 @@ class _DoctorSectionState extends State<DoctorSection> {
                                 ClipRRect(
                                   borderRadius: BorderRadius.circular(12),
                                   child: Container(
-                                    height: 72,
+                                    height: 104,
                                     width: double.infinity,
                                     color: pinkLight,
                                     child: photo.startsWith('assets/')
@@ -547,21 +547,21 @@ class _DoctorSectionState extends State<DoctorSection> {
                                   overflow: TextOverflow.ellipsis,
                                   style: const TextStyle(
                                     color: textDark,
-                                    fontSize: 11,
+                                    fontSize: 12,
                                     fontWeight: FontWeight.w800,
                                   ),
                                 ),
-                                const SizedBox(height: 3),
+                                const SizedBox(height: 4),
                                 Text(
                                   doctor['spesialisasi']?.toString() ?? '-',
                                   maxLines: 1,
                                   overflow: TextOverflow.ellipsis,
                                   style: const TextStyle(
                                     color: textMuted,
-                                    fontSize: 9,
+                                    fontSize: 10,
                                   ),
                                 ),
-                                const SizedBox(height: 4),
+                                const SizedBox(height: 5),
                                 const Row(
                                   children: [
                                     Icon(
@@ -588,41 +588,43 @@ class _DoctorSectionState extends State<DoctorSection> {
                                   ],
                                 ),
                                 const Spacer(),
-                                // Oval jadwal lebih pendek dan tipis.
-                                Container(
-                                  padding: const EdgeInsets.symmetric(
-                                    horizontal: 6,
-                                    vertical: 4,
-                                  ),
-                                  decoration: BoxDecoration(
-                                    color: pinkLight,
-                                    borderRadius: BorderRadius.circular(10),
-                                  ),
-                                  child: Row(
-                                    mainAxisSize: MainAxisSize.min,
-                                    children: [
-                                      const Icon(
-                                        Icons.schedule_rounded,
-                                        color: pinkDark,
-                                        size: 11,
-                                      ),
-                                      const SizedBox(width: 3),
-                                      Flexible(
-                                        child: Text(
-                                          schedule.isEmpty
-                                              ? 'Jadwal belum tersedia'
-                                              : schedule,
-                                          maxLines: 2,
-                                          overflow: TextOverflow.ellipsis,
-                                          style: const TextStyle(
-                                            color: pinkDark,
-                                            fontSize: 8,
-                                            fontWeight: FontWeight.w700,
-                                            height: 1.15,
+                                // Jadwal satu baris dalam kotak oval selebar kartu.
+                                SizedBox(
+                                  width: double.infinity,
+                                  child: Container(
+                                    padding: const EdgeInsets.symmetric(
+                                      horizontal: 8,
+                                      vertical: 7,
+                                    ),
+                                    decoration: BoxDecoration(
+                                      color: pinkLight,
+                                      borderRadius: BorderRadius.circular(30),
+                                    ),
+                                    child: Row(
+                                      children: [
+                                        const Icon(
+                                          Icons.schedule_rounded,
+                                          color: pinkDark,
+                                          size: 12,
+                                        ),
+                                        const SizedBox(width: 5),
+                                        Expanded(
+                                          child: Text(
+                                            schedule.isEmpty
+                                                ? 'Jadwal belum tersedia'
+                                                : schedule.replaceAll('\n', ' '),
+                                            maxLines: 1,
+                                            softWrap: false,
+                                            overflow: TextOverflow.ellipsis,
+                                            style: const TextStyle(
+                                              color: pinkDark,
+                                              fontSize: 9,
+                                              fontWeight: FontWeight.w700,
+                                            ),
                                           ),
                                         ),
-                                      ),
-                                    ],
+                                      ],
+                                    ),
                                   ),
                                 ),
                               ],

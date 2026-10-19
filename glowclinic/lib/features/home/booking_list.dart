@@ -243,7 +243,15 @@ class _BookingListState extends State<BookingList> {
         const PopupMenuItem(value: 'checkin', child: Text('Check-in')),
       if (status == 'done') ...[
         const PopupMenuItem(value: 'foto', child: Text('Jurnal kulit')),
-        const PopupMenuItem(value: 'spin', child: Text('GlowSpin')),
+        if (booking['status_bayar'] == 'lunas')
+          PopupMenuItem(
+            value: 'spin',
+            child: Text(
+              (booking['spin_hadiah'] == null || '${booking['spin_hadiah']}'.isEmpty)
+                  ? 'GlowSpin'
+                  : 'Lihat hadiah: ${booking['spin_hadiah']}',
+            ),
+          ),
         const PopupMenuItem(value: 'ulasan', child: Text('Beri ulasan')),
       ],
     ];

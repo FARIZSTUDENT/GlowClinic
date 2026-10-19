@@ -63,7 +63,11 @@ Future<void> goHome(BuildContext c) async {
     c,
     MaterialPageRoute(
       builder: (_) =>
-          r.first['role'] == 'staf' ? const StaffHome() : const PatientHome(),
+          ['staf', 'staff', 'admin'].contains(
+            '${r.first['role']}'.trim().toLowerCase(),
+          )
+          ? const StaffHome()
+          : const PatientHome(),
     ),
     (_) => false,
   );
@@ -189,7 +193,7 @@ class _LS extends State<LoginScreen> {
     });
 
     try {
-      final r = await qry('select 1 from users where lower(email)=?', [email]);
+      final r = await qry('select 1 from users where lower(trim(email)) = ?', [email]);
 
       if (!mounted) return;
 
@@ -199,7 +203,7 @@ class _LS extends State<LoginScreen> {
       });
     } catch (e) {
       if (mounted) {
-        setState(() => err = '$e');
+        setState(() => err = 'Tidak dapat memeriksa akun. Pastikan database siap lalu coba lagi.');
       }
     } finally {
       if (mounted) {
@@ -218,12 +222,14 @@ class _LS extends State<LoginScreen> {
       int id;
 
       if (step == 1) {
-        final r = await qry('select * from users where lower(email)=?', [
+        final r = await qry('select * from users where lower(trim(email)) = ?', [
           email,
         ]);
 
         if (r.isEmpty ||
-            hashPw(r.first['salt'], pw.text) != r.first['pass_hash']) {
+            (r.first['salt'] == null) ||
+            (r.first['pass_hash'] == null) ||
+            hashPw('${r.first['salt']}', pw.text) != '${r.first['pass_hash']}') {
           throw Exception('Email atau password salah');
         }
 
@@ -266,74 +272,134 @@ class _LS extends State<LoginScreen> {
 
   @override
   Widget build(BuildContext c) {
+    const primary = Color(0xFFD85F89);
+    const ink = Color(0xFF513B45);
     return Scaffold(
+      backgroundColor: const Color(0xFFFFF6F8),
       body: SafeArea(
-        child: Padding(
-          padding: const EdgeInsets.all(24),
-          child: Column(
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: [
-              const Text(
-                'GlowClinic',
-                style: TextStyle(fontSize: 30, fontWeight: FontWeight.bold),
-              ),
-              const SizedBox(height: 24),
-              TextField(
-                controller: em,
-                enabled: step == 0 && !busy,
-                keyboardType: TextInputType.emailAddress,
-                decoration: const InputDecoration(labelText: 'Email'),
-              ),
-              if (step == 2)
-                const Padding(
-                  padding: EdgeInsets.only(top: 8),
-                  child: Text('Email belum terdaftar. Buat akun pasien:'),
-                ),
-              if (step == 2)
-                TextField(
-                  controller: nm,
-                  enabled: !busy,
-                  decoration: const InputDecoration(labelText: 'Nama lengkap'),
-                ),
-              if (step > 0)
-                TextField(
-                  controller: pw,
-                  enabled: !busy,
-                  obscureText: true,
-                  decoration: InputDecoration(
-                    labelText: step == 2 ? 'Buat password' : 'Password',
+        child: Center(
+          child: SingleChildScrollView(
+            padding: const EdgeInsets.all(22),
+            child: ConstrainedBox(
+              constraints: const BoxConstraints(maxWidth: 440),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  Container(
+                    width: 76,
+                    height: 76,
+                    decoration: BoxDecoration(
+                      color: const Color(0xFFFFE2EB),
+                      borderRadius: BorderRadius.circular(24),
+                    ),
+                    child: const Icon(Icons.spa_rounded, size: 42, color: primary),
                   ),
-                ),
-              if (err != null)
-                Padding(
-                  padding: const EdgeInsets.only(top: 8),
-                  child: Text(err!, style: const TextStyle(color: Colors.red)),
-                ),
-              const SizedBox(height: 16),
-              FilledButton(
-                onPressed: busy ? null : (step == 0 ? next : submit),
-                child: Text(
-                  step == 0
-                      ? 'Lanjut'
-                      : step == 1
-                      ? 'Masuk'
-                      : 'Daftar',
-                ),
+                  const SizedBox(height: 18),
+                  const Text(
+                    'GlowClinic',
+                    style: TextStyle(fontSize: 32, fontWeight: FontWeight.w800, color: ink, letterSpacing: -0.8),
+                  ),
+                  const SizedBox(height: 5),
+                  const Text('Perawatan kulit dimulai dari sini.', style: TextStyle(color: Color(0xFF927783), fontSize: 14)),
+                  const SizedBox(height: 28),
+                  Container(
+                    padding: const EdgeInsets.all(22),
+                    decoration: BoxDecoration(
+                      color: Colors.white,
+                      borderRadius: BorderRadius.circular(24),
+                      border: Border.all(color: const Color(0xFFF4DDE5)),
+                      boxShadow: const [BoxShadow(color: Color(0x12A64C70), blurRadius: 28, offset: Offset(0, 10))],
+                    ),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.stretch,
+                      children: [
+                        Text(
+                          step == 0 ? 'Selamat datang' : step == 1 ? 'Masuk ke akunmu' : 'Buat akun pasien',
+                          style: const TextStyle(fontSize: 21, fontWeight: FontWeight.w700, color: ink),
+                        ),
+                        const SizedBox(height: 6),
+                        Text(
+                          step == 0 ? 'Masukkan email untuk melanjutkan.' : step == 1 ? 'Masukkan password akun GlowClinic.' : 'Email belum terdaftar. Lengkapi data berikut.',
+                          style: const TextStyle(color: Color(0xFF927783), fontSize: 13),
+                        ),
+                        const SizedBox(height: 20),
+                        TextField(
+                          controller: em,
+                          enabled: step == 0 && !busy,
+                          keyboardType: TextInputType.emailAddress,
+                          textInputAction: TextInputAction.next,
+                          autofillHints: const [AutofillHints.email],
+                          decoration: InputDecoration(
+                            labelText: 'Email', prefixIcon: const Icon(Icons.mail_outline_rounded),
+                            filled: true, fillColor: const Color(0xFFFFFAFC),
+                            border: OutlineInputBorder(borderRadius: BorderRadius.circular(14)),
+                          ),
+                        ),
+                        if (step == 2) ...[
+                          const SizedBox(height: 12),
+                          TextField(
+                            controller: nm, enabled: !busy,
+                            textCapitalization: TextCapitalization.words,
+                            autofillHints: const [AutofillHints.name],
+                            decoration: InputDecoration(
+                              labelText: 'Nama lengkap', prefixIcon: const Icon(Icons.person_outline_rounded),
+                              filled: true, fillColor: const Color(0xFFFFFAFC),
+                              border: OutlineInputBorder(borderRadius: BorderRadius.circular(14)),
+                            ),
+                          ),
+                        ],
+                        if (step > 0) ...[
+                          const SizedBox(height: 12),
+                          TextField(
+                            controller: pw, enabled: !busy,
+                            obscureText: true,
+                            textInputAction: TextInputAction.done,
+                            autofillHints: step == 1 ? const [AutofillHints.password] : const [AutofillHints.newPassword],
+                            onSubmitted: (_) { if (!busy) submit(); },
+                            decoration: InputDecoration(
+                              labelText: step == 2 ? 'Buat password (min. 6 karakter)' : 'Password',
+                              prefixIcon: const Icon(Icons.lock_outline_rounded),
+                              filled: true, fillColor: const Color(0xFFFFFAFC),
+                              border: OutlineInputBorder(borderRadius: BorderRadius.circular(14)),
+                            ),
+                          ),
+                        ],
+                        if (err != null) ...[
+                          const SizedBox(height: 12),
+                          Container(
+                            padding: const EdgeInsets.all(12),
+                            decoration: BoxDecoration(color: const Color(0xFFFFEEF1), borderRadius: BorderRadius.circular(12)),
+                            child: Row(children: [
+                              const Icon(Icons.error_outline, color: Color(0xFFB4234D), size: 19),
+                              const SizedBox(width: 8),
+                              Expanded(child: Text(err!, style: const TextStyle(color: Color(0xFFB4234D), fontSize: 13))),
+                            ]),
+                          ),
+                        ],
+                        const SizedBox(height: 18),
+                        SizedBox(
+                          height: 52,
+                          child: FilledButton(
+                            style: FilledButton.styleFrom(backgroundColor: primary, foregroundColor: Colors.white, shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14))),
+                            onPressed: busy ? null : (step == 0 ? next : submit),
+                            child: busy
+                                ? const SizedBox(width: 22, height: 22, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white))
+                                : Text(step == 0 ? 'Lanjutkan' : step == 1 ? 'Masuk' : 'Buat akun', style: const TextStyle(fontWeight: FontWeight.w700)),
+                          ),
+                        ),
+                        if (step > 0)
+                          TextButton(
+                            onPressed: busy ? null : () => setState(() { step = 0; err = null; pw.clear(); nm.clear(); }),
+                            child: const Text('Gunakan email lain', style: TextStyle(color: primary)),
+                          ),
+                      ],
+                    ),
+                  ),
+                  const SizedBox(height: 18),
+                  const Text('Akun staf dibuat oleh administrator klinik.', textAlign: TextAlign.center, style: TextStyle(color: Color(0xFF927783), fontSize: 12)),
+                ],
               ),
-              if (step > 0)
-                TextButton(
-                  onPressed: busy
-                      ? null
-                      : () {
-                          setState(() {
-                            step = 0;
-                            err = null;
-                            pw.clear();
-                          });
-                        },
-                  child: const Text('Ganti email'),
-                ),
-            ],
+            ),
           ),
         ),
       ),

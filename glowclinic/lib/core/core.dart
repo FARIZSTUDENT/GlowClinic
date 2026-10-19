@@ -248,19 +248,38 @@ Future<void> initDb() async {
     },
   );
 
-  // Menambahkan cabang jika belum ada.
-  final branches = await db.query(
-    'branches',
-    columns: ['id'],
-    limit: 1,
-  );
 
-  if (branches.isEmpty) {
-    await db.insert('branches', {
+  // Cabang demo dengan koordinat agar marker peta bisa dipilih.
+  // Ganti alamat/koordinat ini dengan lokasi resmi sebelum rilis.
+  final seedBranches = [
+    {
       'nama': 'GlowClinic Pusat',
-      'alamat': 'Yogyakarta',
+      'alamat': 'Area pusat Kota Yogyakarta (lokasi demo)',
+      'lat': -7.797068,
+      'lng': 110.370529,
       'jam_buka': '09:00-18:00',
-    });
+    },
+    {
+      'nama': 'GlowClinic Sleman',
+      'alamat': 'Area Sleman, Yogyakarta (lokasi demo)',
+      'lat': -7.716165,
+      'lng': 110.355614,
+      'jam_buka': '09:00-18:00',
+    },
+    {
+      'nama': 'GlowClinic Bantul',
+      'alamat': 'Area Bantul, Yogyakarta (lokasi demo)',
+      'lat': -7.888211,
+      'lng': 110.328899,
+      'jam_buka': '09:00-18:00',
+    },
+  ];
+  for (final branch in seedBranches) {
+    final existing = await db.query(
+      'branches', columns: ['id'], where: 'nama = ?',
+      whereArgs: [branch['nama']], limit: 1,
+    );
+    if (existing.isEmpty) await db.insert('branches', branch);
   }
 
   // Menambahkan data perawatan jika tabel masih kosong.

@@ -87,6 +87,10 @@ class _SP extends State<SpinScreen> with SingleTickerProviderStateMixin {
   @override
   void initState() {
     super.initState();
+    final savedPrize = widget.b['spin_hadiah']?.toString();
+    if (savedPrize != null && savedPrize.isNotEmpty && savedPrize != 'null') {
+      hasil = savedPrize;
+    }
 
     sub = accelerometerEventStream().listen(
       (event) {

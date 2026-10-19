@@ -176,7 +176,7 @@ class _PS extends State<PhotoScreen> {
               file,
               height: 200,
               fit: BoxFit.cover,
-              errorBuilder: (_, _, _) => const SizedBox(
+              errorBuilder: (context, error, stackTrace) => const SizedBox(
                 height: 120,
                 child: Center(child: Text('Foto tidak dapat ditampilkan.')),
               ),

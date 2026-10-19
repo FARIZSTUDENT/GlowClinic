@@ -77,6 +77,17 @@ class _CS extends State<ChatScreen> {
 
     String answer;
 
+    if (kGemini.trim().isEmpty) {
+      answer = 'GlowBot belum dikonfigurasi. Tambahkan GEMINI_KEY melalui --dart-define saat menjalankan aplikasi.';
+      if (!mounted) return;
+      setState(() {
+        chatMsgs.add({'role': 'model', 'text': answer});
+        busy = false;
+      });
+      scrollToBottom();
+      return;
+    }
+
     try {
       final uri = Uri.parse(
         'https://generativelanguage.googleapis.com/'
@@ -118,9 +129,15 @@ class _CS extends State<ChatScreen> {
           .timeout(const Duration(seconds: 30));
 
       if (response.statusCode != 200) {
-        answer =
-            'GlowBot gagal merespons '
-            '(HTTP ${response.statusCode}). Coba lagi nanti.';
+        if (response.statusCode == 503) {
+          answer = 'Layanan Gemini sedang sibuk atau model belum tersedia (HTTP 503). Tunggu sebentar lalu coba lagi. Jika terus terjadi, periksa nama model dan kuota API key.';
+        } else if (response.statusCode == 429) {
+          answer = 'Batas penggunaan Gemini tercapai (HTTP 429). Coba lagi nanti atau periksa kuota API.';
+        } else if (response.statusCode == 400 || response.statusCode == 404) {
+          answer = 'Konfigurasi Gemini tidak valid (HTTP ${response.statusCode}). Periksa nama model dan API key.';
+        } else {
+          answer = 'GlowBot gagal merespons (HTTP ${response.statusCode}). Coba lagi nanti.';
+        }
       } else {
         final data = jsonDecode(response.body);
 

@@ -1,2 +1,4 @@
+// Masukkan API key saat menjalankan build melalui --dart-define=GEMINI_KEY=...
+// Jangan simpan API key di Git atau file yang dibagikan.
 const kGemini = String.fromEnvironment('GEMINI_KEY');
-const kModel = 'gemini-flash-latest';
+const kModel = 'gemini-2.5-flash';

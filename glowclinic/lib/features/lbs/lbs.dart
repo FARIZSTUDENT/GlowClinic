@@ -259,7 +259,7 @@ class _BranchMapState extends State<BranchMap> {
         SizedBox(
           height: 260,
           child: FlutterMap(
-            options: MapOptions(initialCenter: center, initialZoom: 13),
+            options: MapOptions(initialCenter: center, initialZoom: 12.5, interactionOptions: const InteractionOptions(flags: InteractiveFlag.all)),
             children: [
               TileLayer(
                 urlTemplate: 'https://tile.openstreetmap.org/{z}/{x}/{y}.png',
@@ -275,10 +275,38 @@ class _BranchMapState extends State<BranchMap> {
                       ),
                       width: 40,
                       height: 40,
-                      child: const Icon(
-                        Icons.location_on,
-                        color: Colors.pink,
-                        size: 36,
+                      child: GestureDetector(
+                        behavior: HitTestBehavior.opaque,
+                        onTap: () => showModalBottomSheet<void>(
+                          context: context,
+                          showDragHandle: true,
+                          builder: (sheetContext) => SafeArea(
+                            child: Padding(
+                              padding: const EdgeInsets.fromLTRB(20, 8, 20, 24),
+                              child: Column(
+                                mainAxisSize: MainAxisSize.min,
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  Text('${branch['nama'] ?? 'Cabang GlowClinic'}', style: Theme.of(sheetContext).textTheme.titleLarge),
+                                  const SizedBox(height: 8),
+                                  Text('${branch['alamat'] ?? '-'}'),
+                                  const SizedBox(height: 4),
+                                  Text('Jam buka: ${branch['jam_buka'] ?? '-'}'),
+                                  const SizedBox(height: 12),
+                                  OutlinedButton.icon(
+                                    onPressed: () {
+                                      Navigator.pop(sheetContext);
+                                      setState(() {});
+                                    },
+                                    icon: const Icon(Icons.check_circle_outline),
+                                    label: const Text('Pilih cabang ini'),
+                                  ),
+                                ],
+                              ),
+                            ),
+                          ),
+                        ),
+                        child: const Icon(Icons.location_on, color: Colors.pink, size: 40),
                       ),
                     ),
                   if (position != null)
@@ -308,6 +336,26 @@ class _BranchMapState extends State<BranchMap> {
 
                 return ListTile(
                   leading: const Icon(Icons.local_hospital),
+                  onTap: () => showModalBottomSheet<void>(
+                    context: context,
+                    showDragHandle: true,
+                    builder: (sheetContext) => SafeArea(
+                      child: Padding(
+                        padding: const EdgeInsets.all(20),
+                        child: Column(
+                          mainAxisSize: MainAxisSize.min,
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text('${branch['nama'] ?? 'Cabang GlowClinic'}', style: Theme.of(sheetContext).textTheme.titleLarge),
+                            const SizedBox(height: 8),
+                            Text('${branch['alamat'] ?? '-'}'),
+                            Text('Jam buka: ${branch['jam_buka'] ?? '-'}'),
+                            Text('Jarak: ${distance == null ? 'tidak diketahui' : distance < 1000 ? '${distance.toStringAsFixed(0)} m' : '${(distance / 1000).toStringAsFixed(1)} km'}'),
+                          ],
+                        ),
+                      ),
+                    ),
+                  ),
                   title: Text(branch['nama']?.toString() ?? 'Cabang'),
                   subtitle: Text(
                     '${branch['alamat'] ?? '-'}\n'

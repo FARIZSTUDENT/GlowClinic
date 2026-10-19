@@ -1,4 +1,3 @@
-
 plugins {
     id("com.android.application")
     id("dev.flutter.flutter-gradle-plugin")

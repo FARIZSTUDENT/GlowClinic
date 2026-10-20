@@ -1,38 +1,58 @@
+
 import 'package:flutter/material.dart';
 import 'package:local_auth/local_auth.dart';
 import 'package:glowclinic/core/core.dart';
 import 'package:glowclinic/features/home/patient_home.dart';
 import 'package:glowclinic/features/home/staff_home.dart';
 
+// Membuat sesi login
 Future<void> startSession(int id) async {
   myId = id;
 
   await store.write(key: 'uid', value: '$id');
   await store.write(
     key: 'exp',
-    value:
-        '${DateTime.now().add(const Duration(hours: 24)).millisecondsSinceEpoch}',
+    value: '${DateTime.now().add(const Duration(hours: 24)).millisecondsSinceEpoch}',
   );
   await store.write(key: 'tok', value: newSalt());
 }
 
+// Membaca sesi login dengan penanganan error
 Future<bool> loadSession() async {
-  final u = await store.read(key: 'uid');
-  final e = await store.read(key: 'exp');
+  try {
+    final u = await store.read(key: 'uid');
+    final e = await store.read(key: 'exp');
 
-  if (u == null || e == null) {
+    if (u == null || e == null) {
+      return false;
+    }
+
+    final expiry = int.tryParse(e);
+    final userId = int.tryParse(u);
+
+    if (expiry == null ||
+        userId == null ||
+        expiry < DateTime.now().millisecondsSinceEpoch) {
+      await clearSession();
+      return false;
+    }
+
+    myId = userId;
+    return true;
+  } catch (e) {
+    // Sesi tidak bisa dibaca atau didekripsi.
+    try {
+      await clearSession();
+    } catch (_) {
+      // Penghapusan sesi mungkin gagal jika storage rusak.
+    }
+
+    myId = null;
     return false;
   }
-
-  final expiry = int.tryParse(e);
-  if (expiry == null || expiry < DateTime.now().millisecondsSinceEpoch) {
-    return false;
-  }
-
-  myId = int.tryParse(u);
-  return myId != null;
 }
 
+// Menghapus sesi login
 Future<void> clearSession() async {
   myId = null;
 
@@ -41,13 +61,16 @@ Future<void> clearSession() async {
   }
 }
 
+// Mengarahkan pengguna ke halaman sesuai role
 Future<void> goHome(BuildContext c) async {
   final r = await qry('select role from users where id=?', [myId]);
 
   if (!c.mounted) return;
 
   if (r.isEmpty) {
-    await clearSession();
+    try {
+      await clearSession();
+    } catch (_) {}
 
     if (!c.mounted) return;
 
@@ -59,22 +82,27 @@ Future<void> goHome(BuildContext c) async {
     return;
   }
 
+  final role = '${r.first['role']}'.trim().toLowerCase();
+
   Navigator.pushAndRemoveUntil(
     c,
     MaterialPageRoute(
       builder: (_) =>
-          ['staf', 'staff', 'admin'].contains(
-            '${r.first['role']}'.trim().toLowerCase(),
-          )
-          ? const StaffHome()
-          : const PatientHome(),
+          ['staf', 'staff', 'admin'].contains(role)
+              ? const StaffHome()
+              : const PatientHome(),
     ),
     (_) => false,
   );
 }
 
+// Logout
 Future<void> logout(BuildContext c) async {
-  await clearSession(); // Pengaturan biometrik tetap tersimpan.
+  try {
+    await clearSession();
+  } catch (_) {
+    myId = null;
+  }
 
   if (!c.mounted) return;
 
@@ -85,7 +113,7 @@ Future<void> logout(BuildContext c) async {
   );
 }
 
-// ---------- Gate: sesi + biometrik (gagal 2x -> login) ----------
+// ---------- Gate: sesi + biometrik ----------
 
 class Gate extends StatefulWidget {
   const Gate({super.key});
@@ -95,19 +123,50 @@ class Gate extends StatefulWidget {
 }
 
 class _G extends State<Gate> {
+  bool _started = false;
+
   @override
   void initState() {
     super.initState();
-    WidgetsBinding.instance.addPostFrameCallback((_) => run());
+
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!_started) {
+        _started = true;
+        run();
+      }
+    });
   }
 
   Future<void> run() async {
-    if (!await loadSession()) {
+    // Periksa sesi login.
+    final validSession = await loadSession();
+
+    if (!mounted) return;
+
+    if (!validSession) {
+      _login();
+      return;
+    }
+
+    // Periksa pengaturan biometrik.
+    String? bio;
+
+    try {
+      bio = await store.read(key: 'bio');
+    } catch (_) {
+      // Jika pembacaan storage gagal, minta login ulang.
+      try {
+        await clearSession();
+      } catch (_) {}
+
       if (mounted) _login();
       return;
     }
 
-    if (await store.read(key: 'bio') == '1') {
+    if (!mounted) return;
+
+    // Jika biometrik aktif, lakukan verifikasi.
+    if (bio == '1') {
       final la = LocalAuthentication();
 
       for (var i = 0; i < 2; i++) {
@@ -123,16 +182,19 @@ class _G extends State<Gate> {
             return;
           }
         } catch (_) {
-          if (!mounted) return;
+          // Jika autentikasi gagal, lanjutkan percobaan berikutnya.
         }
       }
 
-      await clearSession();
+      try {
+        await clearSession();
+      } catch (_) {}
 
       if (mounted) _login();
       return;
     }
 
+    // Jika biometrik tidak aktif, langsung menuju halaman utama.
     if (mounted) {
       await goHome(context);
     }
@@ -149,7 +211,11 @@ class _G extends State<Gate> {
 
   @override
   Widget build(BuildContext c) {
-    return const Scaffold(body: Center(child: CircularProgressIndicator()));
+    return const Scaffold(
+      body: Center(
+        child: CircularProgressIndicator(),
+      ),
+    );
   }
 }
 
@@ -193,7 +259,10 @@ class _LS extends State<LoginScreen> {
     });
 
     try {
-      final r = await qry('select 1 from users where lower(trim(email)) = ?', [email]);
+      final r = await qry(
+        'select 1 from users where lower(trim(email)) = ?',
+        [email],
+      );
 
       if (!mounted) return;
 
@@ -203,7 +272,10 @@ class _LS extends State<LoginScreen> {
       });
     } catch (e) {
       if (mounted) {
-        setState(() => err = 'Tidak dapat memeriksa akun. Pastikan database siap lalu coba lagi.');
+        setState(() {
+          err =
+              'Tidak dapat memeriksa akun. Pastikan database siap lalu coba lagi.';
+        });
       }
     } finally {
       if (mounted) {
@@ -222,19 +294,23 @@ class _LS extends State<LoginScreen> {
       int id;
 
       if (step == 1) {
-        final r = await qry('select * from users where lower(trim(email)) = ?', [
-          email,
-        ]);
+        // Login pengguna yang sudah terdaftar.
+        final r = await qry(
+          'select * from users where lower(trim(email)) = ?',
+          [email],
+        );
 
         if (r.isEmpty ||
-            (r.first['salt'] == null) ||
-            (r.first['pass_hash'] == null) ||
-            hashPw('${r.first['salt']}', pw.text) != '${r.first['pass_hash']}') {
+            r.first['salt'] == null ||
+            r.first['pass_hash'] == null ||
+            hashPw('${r.first['salt']}', pw.text) !=
+                '${r.first['pass_hash']}') {
           throw Exception('Email atau password salah');
         }
 
         id = r.first['id'] as int;
       } else {
+        // Registrasi pasien baru.
         if (nm.text.trim().isEmpty) {
           throw Exception('Nama wajib diisi');
         }
@@ -261,7 +337,9 @@ class _LS extends State<LoginScreen> {
       await goHome(context);
     } catch (e) {
       if (mounted) {
-        setState(() => err = e.toString().replaceFirst('Exception: ', ''));
+        setState(() {
+          err = e.toString().replaceFirst('Exception: ', '');
+        });
       }
     } finally {
       if (mounted) {
@@ -274,6 +352,7 @@ class _LS extends State<LoginScreen> {
   Widget build(BuildContext c) {
     const primary = Color(0xFFD85F89);
     const ink = Color(0xFF513B45);
+
     return Scaffold(
       backgroundColor: const Color(0xFFFFF6F8),
       body: SafeArea(
@@ -292,35 +371,73 @@ class _LS extends State<LoginScreen> {
                       color: const Color(0xFFFFE2EB),
                       borderRadius: BorderRadius.circular(24),
                     ),
-                    child: const Icon(Icons.spa_rounded, size: 42, color: primary),
+                    child: const Icon(
+                      Icons.spa_rounded,
+                      size: 42,
+                      color: primary,
+                    ),
                   ),
                   const SizedBox(height: 18),
                   const Text(
                     'GlowClinic',
-                    style: TextStyle(fontSize: 32, fontWeight: FontWeight.w800, color: ink, letterSpacing: -0.8),
+                    style: TextStyle(
+                      fontSize: 32,
+                      fontWeight: FontWeight.w800,
+                      color: ink,
+                      letterSpacing: -0.8,
+                    ),
                   ),
                   const SizedBox(height: 5),
-                  const Text('Perawatan kulit dimulai dari sini.', style: TextStyle(color: Color(0xFF927783), fontSize: 14)),
+                  const Text(
+                    'Perawatan kulit dimulai dari sini.',
+                    style: TextStyle(
+                      color: Color(0xFF927783),
+                      fontSize: 14,
+                    ),
+                  ),
                   const SizedBox(height: 28),
                   Container(
                     padding: const EdgeInsets.all(22),
                     decoration: BoxDecoration(
                       color: Colors.white,
                       borderRadius: BorderRadius.circular(24),
-                      border: Border.all(color: const Color(0xFFF4DDE5)),
-                      boxShadow: const [BoxShadow(color: Color(0x12A64C70), blurRadius: 28, offset: Offset(0, 10))],
+                      border: Border.all(
+                        color: const Color(0xFFF4DDE5),
+                      ),
+                      boxShadow: const [
+                        BoxShadow(
+                          color: Color(0x12A64C70),
+                          blurRadius: 28,
+                          offset: Offset(0, 10),
+                        ),
+                      ],
                     ),
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.stretch,
                       children: [
                         Text(
-                          step == 0 ? 'Selamat datang' : step == 1 ? 'Masuk ke akunmu' : 'Buat akun pasien',
-                          style: const TextStyle(fontSize: 21, fontWeight: FontWeight.w700, color: ink),
+                          step == 0
+                              ? 'Selamat datang'
+                              : step == 1
+                                  ? 'Masuk ke akunmu'
+                                  : 'Buat akun pasien',
+                          style: const TextStyle(
+                            fontSize: 21,
+                            fontWeight: FontWeight.w700,
+                            color: ink,
+                          ),
                         ),
                         const SizedBox(height: 6),
                         Text(
-                          step == 0 ? 'Masukkan email untuk melanjutkan.' : step == 1 ? 'Masukkan password akun GlowClinic.' : 'Email belum terdaftar. Lengkapi data berikut.',
-                          style: const TextStyle(color: Color(0xFF927783), fontSize: 13),
+                          step == 0
+                              ? 'Masukkan email untuk melanjutkan.'
+                              : step == 1
+                                  ? 'Masukkan password akun GlowClinic.'
+                                  : 'Email belum terdaftar. Lengkapi data berikut.',
+                          style: const TextStyle(
+                            color: Color(0xFF927783),
+                            fontSize: 13,
+                          ),
                         ),
                         const SizedBox(height: 20),
                         TextField(
@@ -330,37 +447,60 @@ class _LS extends State<LoginScreen> {
                           textInputAction: TextInputAction.next,
                           autofillHints: const [AutofillHints.email],
                           decoration: InputDecoration(
-                            labelText: 'Email', prefixIcon: const Icon(Icons.mail_outline_rounded),
-                            filled: true, fillColor: const Color(0xFFFFFAFC),
-                            border: OutlineInputBorder(borderRadius: BorderRadius.circular(14)),
+                            labelText: 'Email',
+                            prefixIcon: const Icon(Icons.mail_outline_rounded),
+                            filled: true,
+                            fillColor: const Color(0xFFFFFAFC),
+                            border: OutlineInputBorder(
+                              borderRadius: BorderRadius.circular(14),
+                            ),
                           ),
                         ),
                         if (step == 2) ...[
                           const SizedBox(height: 12),
                           TextField(
-                            controller: nm, enabled: !busy,
+                            controller: nm,
+                            enabled: !busy,
                             textCapitalization: TextCapitalization.words,
                             autofillHints: const [AutofillHints.name],
                             decoration: InputDecoration(
-                              labelText: 'Nama lengkap', prefixIcon: const Icon(Icons.person_outline_rounded),
-                              filled: true, fillColor: const Color(0xFFFFFAFC),
-                              border: OutlineInputBorder(borderRadius: BorderRadius.circular(14)),
+                              labelText: 'Nama lengkap',
+                              prefixIcon: const Icon(
+                                Icons.person_outline_rounded,
+                              ),
+                              filled: true,
+                              fillColor: const Color(0xFFFFFAFC),
+                              border: OutlineInputBorder(
+                                borderRadius: BorderRadius.circular(14),
+                              ),
                             ),
                           ),
                         ],
                         if (step > 0) ...[
                           const SizedBox(height: 12),
                           TextField(
-                            controller: pw, enabled: !busy,
+                            controller: pw,
+                            enabled: !busy,
                             obscureText: true,
                             textInputAction: TextInputAction.done,
-                            autofillHints: step == 1 ? const [AutofillHints.password] : const [AutofillHints.newPassword],
-                            onSubmitted: (_) { if (!busy) submit(); },
+                            autofillHints: step == 1
+                                ? const [AutofillHints.password]
+                                : const [AutofillHints.newPassword],
+                            onSubmitted: (_) {
+                              if (!busy) submit();
+                            },
                             decoration: InputDecoration(
-                              labelText: step == 2 ? 'Buat password (min. 6 karakter)' : 'Password',
-                              prefixIcon: const Icon(Icons.lock_outline_rounded),
-                              filled: true, fillColor: const Color(0xFFFFFAFC),
-                              border: OutlineInputBorder(borderRadius: BorderRadius.circular(14)),
+                              labelText: step == 2
+                                  ? 'Buat password (min. 6 karakter)'
+                                  : 'Password',
+                              prefixIcon: const Icon(
+                                Icons.lock_outline_rounded,
+                              ),
+                              filled: true,
+                              fillColor: const Color(0xFFFFFAFC),
+                              border: OutlineInputBorder(
+                                borderRadius: BorderRadius.circular(14),
+                              ),
                             ),
                           ),
                         ],
@@ -368,35 +508,95 @@ class _LS extends State<LoginScreen> {
                           const SizedBox(height: 12),
                           Container(
                             padding: const EdgeInsets.all(12),
-                            decoration: BoxDecoration(color: const Color(0xFFFFEEF1), borderRadius: BorderRadius.circular(12)),
-                            child: Row(children: [
-                              const Icon(Icons.error_outline, color: Color(0xFFB4234D), size: 19),
-                              const SizedBox(width: 8),
-                              Expanded(child: Text(err!, style: const TextStyle(color: Color(0xFFB4234D), fontSize: 13))),
-                            ]),
+                            decoration: BoxDecoration(
+                              color: const Color(0xFFFFEEF1),
+                              borderRadius: BorderRadius.circular(12),
+                            ),
+                            child: Row(
+                              children: [
+                                const Icon(
+                                  Icons.error_outline,
+                                  color: Color(0xFFB4234D),
+                                  size: 19,
+                                ),
+                                const SizedBox(width: 8),
+                                Expanded(
+                                  child: Text(
+                                    err!,
+                                    style: const TextStyle(
+                                      color: Color(0xFFB4234D),
+                                      fontSize: 13,
+                                    ),
+                                  ),
+                                ),
+                              ],
+                            ),
                           ),
                         ],
                         const SizedBox(height: 18),
                         SizedBox(
                           height: 52,
                           child: FilledButton(
-                            style: FilledButton.styleFrom(backgroundColor: primary, foregroundColor: Colors.white, shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14))),
-                            onPressed: busy ? null : (step == 0 ? next : submit),
+                            style: FilledButton.styleFrom(
+                              backgroundColor: primary,
+                              foregroundColor: Colors.white,
+                              shape: RoundedRectangleBorder(
+                                borderRadius: BorderRadius.circular(14),
+                              ),
+                            ),
+                            onPressed: busy
+                                ? null
+                                : (step == 0 ? next : submit),
                             child: busy
-                                ? const SizedBox(width: 22, height: 22, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white))
-                                : Text(step == 0 ? 'Lanjutkan' : step == 1 ? 'Masuk' : 'Buat akun', style: const TextStyle(fontWeight: FontWeight.w700)),
+                                ? const SizedBox(
+                                    width: 22,
+                                    height: 22,
+                                    child: CircularProgressIndicator(
+                                      strokeWidth: 2,
+                                      color: Colors.white,
+                                    ),
+                                  )
+                                : Text(
+                                    step == 0
+                                        ? 'Lanjutkan'
+                                        : step == 1
+                                            ? 'Masuk'
+                                            : 'Buat akun',
+                                    style: const TextStyle(
+                                      fontWeight: FontWeight.w700,
+                                    ),
+                                  ),
                           ),
                         ),
                         if (step > 0)
                           TextButton(
-                            onPressed: busy ? null : () => setState(() { step = 0; err = null; pw.clear(); nm.clear(); }),
-                            child: const Text('Gunakan email lain', style: TextStyle(color: primary)),
+                            onPressed: busy
+                                ? null
+                                : () {
+                                    setState(() {
+                                      step = 0;
+                                      err = null;
+                                      pw.clear();
+                                      nm.clear();
+                                    });
+                                  },
+                            child: const Text(
+                              'Gunakan email lain',
+                              style: TextStyle(color: primary),
+                            ),
                           ),
                       ],
                     ),
                   ),
                   const SizedBox(height: 18),
-                  const Text('Akun staf dibuat oleh administrator klinik.', textAlign: TextAlign.center, style: TextStyle(color: Color(0xFF927783), fontSize: 12)),
+                  const Text(
+                    'Akun staf dibuat oleh administrator klinik.',
+                    textAlign: TextAlign.center,
+                    style: TextStyle(
+                      color: Color(0xFF927783),
+                      fontSize: 12,
+                    ),
+                  ),
                 ],
               ),
             ),

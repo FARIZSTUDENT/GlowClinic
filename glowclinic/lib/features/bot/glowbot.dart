@@ -1,3 +1,4 @@
+
 import 'dart:async';
 import 'dart:convert';
 
@@ -31,12 +32,16 @@ class _CS extends State<ChatScreen> {
 
   Future<void> loadServices() async {
     try {
-      final services = await qry('SELECT nama, kategori FROM treatments');
+      final services = await qry(
+        'SELECT nama, kategori FROM treatments',
+      );
 
       if (!mounted) return;
 
       setState(() {
-        ctx = services.map((t) => '${t['nama']} (${t['kategori']})').join(', ');
+        ctx = services
+            .map((t) => '${t['nama']} (${t['kategori']})')
+            .join(', ');
         loadingServices = false;
       });
     } catch (_) {
@@ -69,7 +74,10 @@ class _CS extends State<ChatScreen> {
     inp.clear();
 
     setState(() {
-      chatMsgs.add({'role': 'user', 'text': question});
+      chatMsgs.add({
+        'role': 'user',
+        'text': question,
+      });
       busy = true;
     });
 
@@ -78,12 +86,21 @@ class _CS extends State<ChatScreen> {
     String answer;
 
     if (kGemini.trim().isEmpty) {
-      answer = 'GlowBot belum dikonfigurasi. Tambahkan GEMINI_KEY melalui --dart-define saat menjalankan aplikasi.';
+      answer =
+          'GlowBot belum dikonfigurasi. '
+          'Tambahkan GEMINI_KEY melalui --dart-define '
+          'saat menjalankan aplikasi.';
+
       if (!mounted) return;
+
       setState(() {
-        chatMsgs.add({'role': 'model', 'text': answer});
+        chatMsgs.add({
+          'role': 'model',
+          'text': answer,
+        });
         busy = false;
       });
+
       scrollToBottom();
       return;
     }
@@ -97,7 +114,9 @@ class _CS extends State<ChatScreen> {
       final response = await http
           .post(
             uri,
-            headers: {'Content-Type': 'application/json'},
+            headers: {
+              'Content-Type': 'application/json',
+            },
             body: jsonEncode({
               'system_instruction': {
                 'parts': [
@@ -119,42 +138,91 @@ class _CS extends State<ChatScreen> {
                   {
                     'role': message['role'],
                     'parts': [
-                      {'text': message['text']},
+                      {
+                        'text': message['text'],
+                      },
                     ],
                   },
               ],
-              'generationConfig': {'temperature': 0.7, 'maxOutputTokens': 500},
+              'generationConfig': {
+                'temperature': 0.7,
+                'maxOutputTokens': 500,
+              },
             }),
           )
           .timeout(const Duration(seconds: 30));
 
       if (response.statusCode != 200) {
+        // Menampilkan error asli Gemini di terminal VS Code.
+        debugPrint('GEMINI STATUS: ${response.statusCode}');
+        debugPrint('GEMINI ERROR: ${response.body}');
+
+        String detail = 'Tidak ada detail error dari server.';
+
+        try {
+          final errorData = jsonDecode(response.body);
+
+          if (errorData is Map &&
+              errorData['error'] is Map) {
+            detail =
+                errorData['error']['message']?.toString() ??
+                    detail;
+          }
+        } catch (_) {}
+
         if (response.statusCode == 503) {
-          answer = 'Layanan Gemini sedang sibuk atau model belum tersedia (HTTP 503). Tunggu sebentar lalu coba lagi. Jika terus terjadi, periksa nama model dan kuota API key.';
+          answer =
+              'Layanan Gemini sedang sibuk. Coba lagi nanti. '
+              'Detail: $detail';
         } else if (response.statusCode == 429) {
-          answer = 'Batas penggunaan Gemini tercapai (HTTP 429). Coba lagi nanti atau periksa kuota API.';
-        } else if (response.statusCode == 400 || response.statusCode == 404) {
-          answer = 'Konfigurasi Gemini tidak valid (HTTP ${response.statusCode}). Periksa nama model dan API key.';
+          answer =
+              'Batas penggunaan Gemini tercapai. '
+              'Periksa kuota API. Detail: $detail';
+        } else if (response.statusCode == 400 ||
+            response.statusCode == 404) {
+          answer =
+              'Permintaan Gemini tidak valid '
+              '(HTTP ${response.statusCode}). '
+              'Detail: $detail';
+        } else if (response.statusCode == 401 ||
+            response.statusCode == 403) {
+          answer =
+              'API key ditolak atau tidak memiliki izin. '
+              'Periksa konfigurasi API key.';
         } else {
-          answer = 'GlowBot gagal merespons (HTTP ${response.statusCode}). Coba lagi nanti.';
+          answer =
+              'GlowBot gagal merespons '
+              '(HTTP ${response.statusCode}). '
+              'Detail: $detail';
         }
       } else {
         final data = jsonDecode(response.body);
 
-        final candidates = data is Map ? data['candidates'] : null;
+        final candidates =
+            data is Map ? data['candidates'] : null;
 
-        final firstCandidate = candidates is List && candidates.isNotEmpty
-            ? candidates.first
-            : null;
-        final content = firstCandidate is Map
-            ? firstCandidate['content']
-            : null;
-        final parts = content is Map ? content['parts'] : null;
+        final firstCandidate =
+            candidates is List && candidates.isNotEmpty
+                ? candidates.first
+                : null;
+
+        final content =
+            firstCandidate is Map
+                ? firstCandidate['content']
+                : null;
+
+        final parts =
+            content is Map ? content['parts'] : null;
 
         if (parts is List && parts.isNotEmpty) {
           answer = parts
-              .where((part) => part is Map && part['text'] is String)
-              .map((part) => part['text'] as String)
+              .where(
+                (part) =>
+                    part is Map && part['text'] is String,
+              )
+              .map(
+                (part) => part['text'] as String,
+              )
               .join('\n')
               .trim();
 
@@ -170,8 +238,12 @@ class _CS extends State<ChatScreen> {
         }
       }
     } on TimeoutException {
-      answer = 'Koneksi terlalu lama. Periksa internet dan coba lagi.';
-    } catch (_) {
+      answer =
+          'Koneksi terlalu lama. '
+          'Periksa internet dan coba lagi.';
+    } catch (e) {
+      debugPrint('GEMINI CONNECTION ERROR: $e');
+
       answer =
           'Gagal terhubung ke GlowBot. '
           'Periksa koneksi internet dan konfigurasi API.';
@@ -180,7 +252,10 @@ class _CS extends State<ChatScreen> {
     if (!mounted) return;
 
     setState(() {
-      chatMsgs.add({'role': 'model', 'text': answer});
+      chatMsgs.add({
+        'role': 'model',
+        'text': answer,
+      });
       busy = false;
     });
 
@@ -205,12 +280,15 @@ class _CS extends State<ChatScreen> {
             children: [
               if (chatMsgs.isEmpty)
                 Padding(
-                  padding: const EdgeInsets.symmetric(vertical: 12),
+                  padding: const EdgeInsets.symmetric(
+                    vertical: 12,
+                  ),
                   child: Text(
                     loadingServices
-                        ? 'Halo! Aku GlowBot. Sedang memuat informasi layanan...'
+                        ? 'Halo! Aku GlowBot. '
+                            'Sedang memuat informasi layanan...'
                         : 'Halo! Aku GlowBot. Tanya soal persiapan '
-                              'atau perawatan setelah treatment.',
+                            'atau perawatan setelah treatment.',
                   ),
                 ),
               for (final message in chatMsgs)
@@ -225,8 +303,12 @@ class _CS extends State<ChatScreen> {
                     child: Padding(
                       padding: const EdgeInsets.all(10),
                       child: ConstrainedBox(
-                        constraints: const BoxConstraints(maxWidth: 300),
-                        child: SelectableText(message['text'] ?? ''),
+                        constraints: const BoxConstraints(
+                          maxWidth: 300,
+                        ),
+                        child: SelectableText(
+                          message['text'] ?? '',
+                        ),
                       ),
                     ),
                   ),
@@ -240,12 +322,18 @@ class _CS extends State<ChatScreen> {
           ),
         ),
         const Padding(
-          padding: EdgeInsets.symmetric(horizontal: 12, vertical: 4),
+          padding: EdgeInsets.symmetric(
+            horizontal: 12,
+            vertical: 4,
+          ),
           child: Text(
             'GlowBot bukan alat diagnosis medis. '
             'Konsultasikan keluhan kepada dokter.',
             textAlign: TextAlign.center,
-            style: TextStyle(fontSize: 11, color: Colors.grey),
+            style: TextStyle(
+              fontSize: 11,
+              color: Colors.grey,
+            ),
           ),
         ),
         Padding(

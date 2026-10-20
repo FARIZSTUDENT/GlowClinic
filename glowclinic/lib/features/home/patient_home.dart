@@ -30,7 +30,7 @@ class _PH extends State<PatientHome> {
     NavigationDestination(
       icon: Icon(Icons.spa_outlined),
       selectedIcon: Icon(Icons.spa_rounded),
-      label: 'Layanan',
+      label: 'Home',
     ),
     NavigationDestination(
       icon: Icon(Icons.location_on_outlined),

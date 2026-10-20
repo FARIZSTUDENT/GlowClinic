@@ -3,6 +3,13 @@ import 'package:glowclinic/core/core.dart';
 import 'package:glowclinic/features/booking/zones.dart';
 import 'package:glowclinic/features/blockchain/chain.dart';
 
+const Color bookingPink = Color(0xFF641F35);
+const Color bookingDark = Color(0xFF481526);
+const Color bookingLight = Color(0xFFF3E4E8);
+const Color bookingBackground = Color(0xFFFFF8F6);
+const Color bookingText = Color(0xFF49343B);
+const Color bookingMuted = Color(0xFF9A7B84);
+
 class BookingScreen extends StatefulWidget {
   final Map t;
 
@@ -28,22 +35,31 @@ class _BookingScreenState extends State<BookingScreen> {
   }
 
   Future<void> loadDoctors() async {
-    try {
-      final result = await qry('select * from doctors');
+    setState(() {
+      loadingDoctors = true;
+      doctorError = null;
+    });
 
-      if (!mounted) {
-        return;
-      }
+    try {
+      final result = await qry('select * from doctors order by nama');
+
+      if (!mounted) return;
 
       setState(() {
         docs = List<Map<String, dynamic>>.from(result);
         loadingDoctors = false;
-        doctorError = null;
+
+        // Pertahankan pilihan dokter jika masih ada di hasil query.
+        if (doc != null) {
+          final oldId = doc!['id'];
+          doc = docs.cast<Map<String, dynamic>?>().firstWhere(
+                (d) => d?['id'] == oldId,
+                orElse: () => null,
+              );
+        }
       });
-    } catch (e) {
-      if (!mounted) {
-        return;
-      }
+    } catch (_) {
+      if (!mounted) return;
 
       setState(() {
         loadingDoctors = false;
@@ -57,27 +73,56 @@ class _BookingScreenState extends State<BookingScreen> {
 
     final selectedDate = await showDatePicker(
       context: context,
-      initialDate: when != null && when!.isAfter(now)
-          ? DateTime(when!.year, when!.month, when!.day)
-          : DateTime(now.year, now.month, now.day),
-      firstDate: DateTime(now.year, now.month, now.day),
-      lastDate: DateTime.now().add(const Duration(days: 90)),
+      initialDate: when != null &&
+              DateUtils.dateOnly(when!).isAfter(DateUtils.dateOnly(now))
+          ? DateUtils.dateOnly(when!)
+          : DateUtils.dateOnly(now),
+      firstDate: DateUtils.dateOnly(now),
+      lastDate: DateUtils.dateOnly(now.add(const Duration(days: 90))),
+      helpText: 'Pilih tanggal perawatan',
+      cancelText: 'BATAL',
+      confirmText: 'LANJUT',
+      builder: (context, child) {
+        return Theme(
+          data: Theme.of(context).copyWith(
+            colorScheme: const ColorScheme.light(
+              primary: bookingPink,
+              onPrimary: Colors.white,
+              surface: Colors.white,
+              onSurface: bookingText,
+            ),
+          ),
+          child: child!,
+        );
+      },
     );
 
-    if (selectedDate == null || !mounted) {
-      return;
-    }
+    if (selectedDate == null || !mounted) return;
 
     final selectedTime = await showTimePicker(
       context: context,
       initialTime: when != null
           ? TimeOfDay.fromDateTime(when!)
           : const TimeOfDay(hour: 10, minute: 0),
+      helpText: 'Pilih jam perawatan',
+      cancelText: 'BATAL',
+      confirmText: 'PILIH',
+      builder: (context, child) {
+        return Theme(
+          data: Theme.of(context).copyWith(
+            colorScheme: const ColorScheme.light(
+              primary: bookingPink,
+              onPrimary: Colors.white,
+              surface: Colors.white,
+              onSurface: bookingText,
+            ),
+          ),
+          child: child!,
+        );
+      },
     );
 
-    if (selectedTime == null || !mounted) {
-      return;
-    }
+    if (selectedTime == null || !mounted) return;
 
     final selectedDateTime = DateTime(
       selectedDate.year,
@@ -89,7 +134,10 @@ class _BookingScreenState extends State<BookingScreen> {
 
     if (!selectedDateTime.isAfter(DateTime.now())) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Pilih jadwal yang masih akan datang.')),
+        const SnackBar(
+          content: Text('Pilih jadwal yang masih akan datang.'),
+          behavior: SnackBarBehavior.floating,
+        ),
       );
       return;
     }
@@ -100,9 +148,7 @@ class _BookingScreenState extends State<BookingScreen> {
   }
 
   Future<void> save() async {
-    if (saving || doc == null || when == null) {
-      return;
-    }
+    if (saving || doc == null || when == null) return;
 
     final utc = when!.toUtc();
 
@@ -124,29 +170,29 @@ class _BookingScreenState extends State<BookingScreen> {
 
       bookingSaved = true;
 
-      // Catat booking ke blockchain setelah database berhasil menyimpan.
       await Chain.add('booking:$id:$myId:${utc.toIso8601String()}');
 
-      if (!mounted) {
-        return;
-      }
+      if (!mounted) return;
 
       Navigator.pop(
         context,
         'Booking berhasil dikirim dan menunggu konfirmasi.',
       );
-    } catch (e) {
-      if (!mounted) {
-        return;
-      }
+    } catch (_) {
+      if (!mounted) return;
 
       final message = bookingSaved
-          ? 'Booking tersimpan, tetapi pencatatan blockchain gagal. '
-                'Jangan kirim booking ulang; periksa status pencatatan.'
+          ? 'Booking sudah tersimpan, tetapi pencatatan blockchain gagal. '
+              'Jangan kirim booking ulang; periksa status pencatatan.'
           : 'Booking gagal disimpan. Silakan coba lagi.';
 
-      ScaffoldMessenger.of(context)
-          .showSnackBar(SnackBar(content: Text(message)));
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(message),
+          behavior: SnackBarBehavior.floating,
+          backgroundColor: bookingDark,
+        ),
+      );
     } finally {
       if (mounted) {
         setState(() {
@@ -156,83 +202,672 @@ class _BookingScreenState extends State<BookingScreen> {
     }
   }
 
+  String formatPrice(dynamic value) {
+    final number = value is num
+        ? value.toInt()
+        : int.tryParse(value?.toString() ?? '');
+
+    if (number == null) return '-';
+
+    final digits = number.toString();
+    final result = StringBuffer();
+
+    for (int i = 0; i < digits.length; i++) {
+      result.write(digits[i]);
+
+      final remaining = digits.length - i - 1;
+      if (remaining > 0 && remaining % 3 == 0) {
+        result.write('.');
+      }
+    }
+
+    return result.toString();
+  }
+
+  String formatDate(DateTime date) {
+    const days = [
+      'Senin',
+      'Selasa',
+      'Rabu',
+      'Kamis',
+      'Jumat',
+      'Sabtu',
+      'Minggu',
+    ];
+
+    const months = [
+      'Januari',
+      'Februari',
+      'Maret',
+      'April',
+      'Mei',
+      'Juni',
+      'Juli',
+      'Agustus',
+      'September',
+      'Oktober',
+      'November',
+      'Desember',
+    ];
+
+    return '${days[date.weekday - 1]}, ${date.day} '
+        '${months[date.month - 1]} ${date.year}';
+  }
+
+  String formatTime(DateTime date) {
+    final hour = date.hour.toString().padLeft(2, '0');
+    final minute = date.minute.toString().padLeft(2, '0');
+    return '$hour:$minute WIB';
+  }
+
   @override
   Widget build(BuildContext context) {
+    final treatmentName =
+        widget.t['nama']?.toString() ?? 'Treatment';
+    final category =
+        widget.t['kategori']?.toString() ?? 'Perawatan kulit';
+    final description =
+        widget.t['deskripsi']?.toString() ?? '';
+    final duration =
+        widget.t['durasi_menit']?.toString() ?? '-';
+    final price = formatPrice(widget.t['harga_idr']);
+    final photo = widget.t['foto_url']?.toString().trim() ?? '';
+
+    final canSubmit =
+        doc != null && when != null && !saving && !loadingDoctors;
+
     return Scaffold(
-      appBar: AppBar(title: Text('Booking ${widget.t['nama'] ?? 'Layanan'}')),
-      body: ListView(
-        padding: const EdgeInsets.all(16),
-        children: [
-          if (loadingDoctors)
-            const Center(
-              child: Padding(
-                padding: EdgeInsets.all(16),
-                child: CircularProgressIndicator(),
-              ),
-            )
-          else if (doctorError != null)
-            Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(doctorError!),
-                const SizedBox(height: 8),
-                OutlinedButton(
-                  onPressed: loadDoctors,
-                  child: const Text('Muat Ulang Dokter'),
+      backgroundColor: bookingBackground,
+      appBar: AppBar(
+        backgroundColor: bookingBackground,
+        foregroundColor: bookingText,
+        surfaceTintColor: Colors.transparent,
+        elevation: 0,
+        title: const Text(
+          'Booking Perawatan',
+          style: TextStyle(
+            fontSize: 19,
+            fontWeight: FontWeight.w800,
+            color: bookingText,
+          ),
+        ),
+      ),
+      body: SafeArea(
+        child: ListView(
+          padding: const EdgeInsets.fromLTRB(18, 8, 18, 28),
+          children: [
+            // HEADER
+            Container(
+              padding: const EdgeInsets.all(20),
+              decoration: BoxDecoration(
+                gradient: const LinearGradient(
+                  begin: Alignment.topLeft,
+                  end: Alignment.bottomRight,
+                  colors: [bookingPink, bookingDark],
                 ),
-              ],
-            )
-          else if (docs.isEmpty)
-            const Text('Belum ada dokter yang tersedia.')
-          else
-            DropdownButtonFormField<Map<String, dynamic>>(
-              initialValue: doc,
-              isExpanded: true,
-              hint: const Text('Pilih dokter'),
-              items: [
-                for (final doctor in docs)
-                  DropdownMenuItem<Map<String, dynamic>>(
-                    value: doctor,
-                    child: Text(
-                      '${doctor['nama'] ?? 'Tanpa nama'} '
-                      '(${doctor['spesialisasi'] ?? '-'})',
-                      overflow: TextOverflow.ellipsis,
+                borderRadius: BorderRadius.circular(24),
+              ),
+              child: Row(
+                children: [
+                  Container(
+                    width: 48,
+                    height: 48,
+                    decoration: BoxDecoration(
+                      color: Colors.white.withValues(alpha: 0.15),
+                      borderRadius: BorderRadius.circular(16),
+                    ),
+                    child: const Icon(
+                      Icons.spa_rounded,
+                      color: Colors.white,
+                      size: 26,
                     ),
                   ),
+                  const SizedBox(width: 14),
+                  const Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          'Waktunya merawat diri',
+                          style: TextStyle(
+                            color: Colors.white,
+                            fontSize: 17,
+                            fontWeight: FontWeight.w800,
+                          ),
+                        ),
+                        SizedBox(height: 5),
+                        Text(
+                          'Pilih dokter dan jadwal yang cocok untukmu.',
+                          style: TextStyle(
+                            color: Colors.white70,
+                            fontSize: 12,
+                            height: 1.4,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ],
+              ),
+            ),
+
+            const SizedBox(height: 24),
+
+            _sectionTitle('Treatment yang dipilih', '01'),
+
+            const SizedBox(height: 12),
+
+            // RINGKASAN TREATMENT
+            Container(
+              padding: const EdgeInsets.all(12),
+              decoration: BoxDecoration(
+                color: Colors.white,
+                borderRadius: BorderRadius.circular(22),
+                border: Border.all(color: bookingLight),
+              ),
+              child: Row(
+                children: [
+                  ClipRRect(
+                    borderRadius: BorderRadius.circular(15),
+                    child: SizedBox(
+                      width: 100,
+                      height: 105,
+                      child: photo.startsWith('http')
+                          ? Image.network(
+                              photo,
+                              fit: BoxFit.cover,
+                              errorBuilder: (_, __, ___) =>
+                                  _imagePlaceholder(),
+                            )
+                          : _imagePlaceholder(),
+                    ),
+                  ),
+                  const SizedBox(width: 14),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Container(
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 10,
+                            vertical: 5,
+                          ),
+                          decoration: BoxDecoration(
+                            color: bookingLight,
+                            borderRadius: BorderRadius.circular(20),
+                          ),
+                          child: Text(
+                            category,
+                            style: const TextStyle(
+                              color: bookingPink,
+                              fontSize: 10,
+                              fontWeight: FontWeight.w800,
+                            ),
+                          ),
+                        ),
+                        const SizedBox(height: 9),
+                        Text(
+                          treatmentName,
+                          maxLines: 2,
+                          overflow: TextOverflow.ellipsis,
+                          style: const TextStyle(
+                            color: bookingText,
+                            fontSize: 15,
+                            fontWeight: FontWeight.w800,
+                          ),
+                        ),
+                        const SizedBox(height: 7),
+                        Row(
+                          children: [
+                            const Icon(
+                              Icons.schedule_rounded,
+                              size: 14,
+                              color: bookingMuted,
+                            ),
+                            const SizedBox(width: 5),
+                            Text(
+                              '$duration menit',
+                              style: const TextStyle(
+                                color: bookingMuted,
+                                fontSize: 11,
+                              ),
+                            ),
+                          ],
+                        ),
+                        const SizedBox(height: 8),
+                        Text(
+                          'Rp $price',
+                          style: const TextStyle(
+                            color: bookingPink,
+                            fontSize: 16,
+                            fontWeight: FontWeight.w900,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ],
+              ),
+            ),
+
+            if (description.trim().isNotEmpty) ...[
+              const SizedBox(height: 10),
+              Text(
+                description,
+                maxLines: 3,
+                overflow: TextOverflow.ellipsis,
+                style: const TextStyle(
+                  color: bookingMuted,
+                  fontSize: 12,
+                  height: 1.5,
+                ),
+              ),
+            ],
+
+            const SizedBox(height: 26),
+
+            _sectionTitle('Pilih dokter', '02'),
+
+            const SizedBox(height: 12),
+
+            // PILIH DOKTER
+            Container(
+              padding: const EdgeInsets.all(16),
+              decoration: BoxDecoration(
+                color: Colors.white,
+                borderRadius: BorderRadius.circular(20),
+                border: Border.all(color: bookingLight),
+              ),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Row(
+                    children: [
+                      Container(
+                        width: 42,
+                        height: 42,
+                        decoration: BoxDecoration(
+                          color: bookingLight,
+                          borderRadius: BorderRadius.circular(14),
+                        ),
+                        child: const Icon(
+                          Icons.medical_services_outlined,
+                          color: bookingPink,
+                        ),
+                      ),
+                      const SizedBox(width: 12),
+                      const Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              'Dokter perawatan',
+                              style: TextStyle(
+                                color: bookingText,
+                                fontWeight: FontWeight.w800,
+                                fontSize: 13,
+                              ),
+                            ),
+                            SizedBox(height: 3),
+                            Text(
+                              'Pilih dokter yang kamu inginkan',
+                              style: TextStyle(
+                                color: bookingMuted,
+                                fontSize: 11,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 16),
+                  if (loadingDoctors)
+                    const Center(
+                      child: Padding(
+                        padding: EdgeInsets.all(12),
+                        child: CircularProgressIndicator(
+                          color: bookingPink,
+                        ),
+                      ),
+                    )
+                  else if (doctorError != null)
+                    Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          doctorError!,
+                          style: const TextStyle(color: bookingMuted),
+                        ),
+                        TextButton.icon(
+                          onPressed: loadDoctors,
+                          icon: const Icon(Icons.refresh),
+                          label: const Text('Coba lagi'),
+                        ),
+                      ],
+                    )
+                  else if (docs.isEmpty)
+                    const Text(
+                      'Belum ada dokter yang tersedia.',
+                      style: TextStyle(color: bookingMuted),
+                    )
+                  else
+                    DropdownButtonFormField<Map<String, dynamic>>(
+                      value: doc,
+                      isExpanded: true,
+                      decoration: InputDecoration(
+                        hintText: 'Pilih dokter',
+                        filled: true,
+                        fillColor: bookingBackground,
+                        contentPadding: const EdgeInsets.symmetric(
+                          horizontal: 14,
+                          vertical: 15,
+                        ),
+                        border: OutlineInputBorder(
+                          borderRadius: BorderRadius.circular(14),
+                          borderSide: BorderSide.none,
+                        ),
+                      ),
+                      items: [
+                        for (final doctor in docs)
+                          DropdownMenuItem<Map<String, dynamic>>(
+                            value: doctor,
+                            child: Text(
+                              '${doctor['nama'] ?? 'Tanpa nama'}'
+                              ' • ${doctor['spesialisasi'] ?? '-'}',
+                              overflow: TextOverflow.ellipsis,
+                            ),
+                          ),
+                      ],
+                      onChanged: saving
+                          ? null
+                          : (value) {
+                              setState(() {
+                                doc = value;
+                              });
+                            },
+                    ),
+                ],
+              ),
+            ),
+
+            const SizedBox(height: 26),
+
+            _sectionTitle('Atur jadwal', '03'),
+
+            const SizedBox(height: 12),
+
+            // PILIH JADWAL
+            InkWell(
+              onTap: saving ? null : pick,
+              borderRadius: BorderRadius.circular(20),
+              child: Container(
+                padding: const EdgeInsets.all(16),
+                decoration: BoxDecoration(
+                  color: Colors.white,
+                  borderRadius: BorderRadius.circular(20),
+                  border: Border.all(
+                    color: when == null ? bookingLight : bookingPink,
+                  ),
+                ),
+                child: Row(
+                  children: [
+                    Container(
+                      width: 48,
+                      height: 48,
+                      decoration: BoxDecoration(
+                        color: bookingLight,
+                        borderRadius: BorderRadius.circular(15),
+                      ),
+                      child: const Icon(
+                        Icons.calendar_month_rounded,
+                        color: bookingPink,
+                        size: 24,
+                      ),
+                    ),
+                    const SizedBox(width: 13),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            when == null
+                                ? 'Tanggal & waktu'
+                                : formatDate(when!),
+                            style: const TextStyle(
+                              color: bookingText,
+                              fontWeight: FontWeight.w800,
+                              fontSize: 13,
+                            ),
+                          ),
+                          const SizedBox(height: 5),
+                          Text(
+                            when == null
+                                ? 'Ketuk untuk memilih jadwal'
+                                : '${formatTime(when!)} • ${zoneText(when!.toUtc())}',
+                            style: const TextStyle(
+                              color: bookingMuted,
+                              fontSize: 11,
+                              height: 1.4,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                    Icon(
+                      when == null
+                          ? Icons.add_circle_outline_rounded
+                          : Icons.edit_calendar_rounded,
+                      color: bookingPink,
+                    ),
+                  ],
+                ),
+              ),
+            ),
+
+            const SizedBox(height: 26),
+
+            // RINGKASAN PEMBAYARAN
+            _sectionTitle('Ringkasan booking', '04'),
+
+            const SizedBox(height: 12),
+
+            Container(
+              padding: const EdgeInsets.all(18),
+              decoration: BoxDecoration(
+                color: bookingLight.withValues(alpha: 0.65),
+                borderRadius: BorderRadius.circular(20),
+              ),
+              child: Column(
+                children: [
+                  _summaryRow('Treatment', treatmentName),
+                  const SizedBox(height: 12),
+                  _summaryRow(
+                    'Dokter',
+                    doc?['nama']?.toString() ?? 'Belum dipilih',
+                  ),
+                  const SizedBox(height: 12),
+                  _summaryRow(
+                    'Jadwal',
+                    when == null
+                        ? 'Belum dipilih'
+                        : '${when!.day}/${when!.month}/${when!.year}'
+                            ' • ${formatTime(when!)}',
+                  ),
+                  const Padding(
+                    padding: EdgeInsets.symmetric(vertical: 15),
+                    child: Divider(color: Colors.white, height: 1),
+                  ),
+                  Row(
+                    children: [
+                      const Expanded(
+                        child: Text(
+                          'Total perawatan',
+                          style: TextStyle(
+                            color: bookingText,
+                            fontWeight: FontWeight.w800,
+                            fontSize: 13,
+                          ),
+                        ),
+                      ),
+                      Text(
+                        'Rp $price',
+                        style: const TextStyle(
+                          color: bookingPink,
+                          fontSize: 19,
+                          fontWeight: FontWeight.w900,
+                        ),
+                      ),
+                    ],
+                  ),
+                ],
+              ),
+            ),
+
+            const SizedBox(height: 20),
+
+            // TOMBOL KONFIRMASI
+            SizedBox(
+              height: 56,
+              child: FilledButton(
+                onPressed: canSubmit ? save : null,
+                style: FilledButton.styleFrom(
+                  backgroundColor: bookingPink,
+                  disabledBackgroundColor: const Color(0xFFE5DCDD),
+                  foregroundColor: Colors.white,
+                  disabledForegroundColor: Colors.white70,
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(18),
+                  ),
+                  elevation: 0,
+                ),
+                child: saving
+                    ? const SizedBox(
+                        width: 22,
+                        height: 22,
+                        child: CircularProgressIndicator(
+                          color: Colors.white,
+                          strokeWidth: 2,
+                        ),
+                      )
+                    : const Row(
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        children: [
+                          Icon(Icons.check_circle_outline_rounded),
+                          SizedBox(width: 9),
+                          Text(
+                            'Konfirmasi Booking',
+                            style: TextStyle(
+                              fontSize: 14,
+                              fontWeight: FontWeight.w800,
+                            ),
+                          ),
+                        ],
+                      ),
+              ),
+            ),
+
+            const SizedBox(height: 12),
+
+            const Row(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                Icon(
+                  Icons.lock_outline_rounded,
+                  size: 14,
+                  color: bookingMuted,
+                ),
+                SizedBox(width: 6),
+                Flexible(
+                  child: Text(
+                    'Pastikan dokter dan jadwal sudah benar.',
+                    textAlign: TextAlign.center,
+                    style: TextStyle(
+                      color: bookingMuted,
+                      fontSize: 10,
+                    ),
+                  ),
+                ),
               ],
-              onChanged: saving
-                  ? null
-                  : (value) {
-                      setState(() {
-                        doc = value;
-                      });
-                    },
             ),
-          const SizedBox(height: 12),
-          OutlinedButton.icon(
-            onPressed: saving ? null : pick,
-            icon: const Icon(Icons.calendar_month),
-            label: Text(when == null ? 'Pilih tanggal & jam' : 'Ganti jadwal'),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _sectionTitle(String title, String number) {
+    return Row(
+      children: [
+        Container(
+          width: 30,
+          height: 30,
+          alignment: Alignment.center,
+          decoration: BoxDecoration(
+            color: bookingLight,
+            borderRadius: BorderRadius.circular(10),
           ),
-          if (when != null)
-            Padding(
-              padding: const EdgeInsets.all(8),
-              child: Text(zoneText(when!.toUtc())),
+          child: Text(
+            number,
+            style: const TextStyle(
+              color: bookingPink,
+              fontSize: 11,
+              fontWeight: FontWeight.w900,
             ),
-          const SizedBox(height: 12),
-          FilledButton(
-            onPressed: doc != null && when != null && !saving && !loadingDoctors
-                ? save
-                : null,
-            child: saving
-                ? const SizedBox(
-                    width: 20,
-                    height: 20,
-                    child: CircularProgressIndicator(strokeWidth: 2),
-                  )
-                : const Text('Konfirmasi Booking'),
           ),
-        ],
+        ),
+        const SizedBox(width: 10),
+        Text(
+          title,
+          style: const TextStyle(
+            color: bookingText,
+            fontSize: 16,
+            fontWeight: FontWeight.w900,
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _summaryRow(String label, String value) {
+    return Row(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Expanded(
+          flex: 4,
+          child: Text(
+            label,
+            style: const TextStyle(
+              color: bookingMuted,
+              fontSize: 12,
+            ),
+          ),
+        ),
+        const SizedBox(width: 10),
+        Expanded(
+          flex: 6,
+          child: Text(
+            value,
+            textAlign: TextAlign.end,
+            style: const TextStyle(
+              color: bookingText,
+              fontSize: 12,
+              fontWeight: FontWeight.w700,
+            ),
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _imagePlaceholder() {
+    return Container(
+      color: bookingLight,
+      alignment: Alignment.center,
+      child: const Icon(
+        Icons.spa_rounded,
+        color: bookingPink,
+        size: 34,
       ),
     );
   }

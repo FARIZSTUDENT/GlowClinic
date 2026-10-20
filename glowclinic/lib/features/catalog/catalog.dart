@@ -1,18 +1,63 @@
 
 import 'dart:async';
-
 import 'package:flutter/material.dart';
 import 'package:flutter/gestures.dart';
 import 'package:glowclinic/core/core.dart';
 import 'package:glowclinic/features/catalog/api.dart';
+import 'package:glowclinic/features/catalog/treatment_api.dart';
 import 'package:glowclinic/features/booking/booking_screen.dart';
 
-const Color pink = Color(0xFFE879A0);
-const Color pinkDark = Color(0xFFD85F89);
-const Color pinkLight = Color(0xFFFFE1EA);
-const Color background = Color(0xFFFFF7F9);
-const Color textDark = Color(0xFF59434C);
-const Color textMuted = Color(0xFFB08C99);
+// ==================== WARNA ====================
+
+const Color pink = Color(0xFF641F35);
+const Color pinkDark = Color(0xFF481526);
+const Color pinkLight = Color(0xFFF3E4E8);
+const Color background = Color(0xFFFFF8F6);
+const Color textDark = Color(0xFF49343B);
+const Color textMuted = Color(0xFF9A7B84);
+
+// ==================== FOTO TREATMENT ====================
+
+Widget _treatmentImage(String photoUrl, {double iconSize = 32}) {
+  final url = photoUrl.trim();
+
+  if (url.isEmpty ||
+      !(url.startsWith('https://') || url.startsWith('http://'))) {
+    return Container(
+      color: pinkLight,
+      alignment: Alignment.center,
+      child: Icon(Icons.spa_rounded, color: pinkDark, size: iconSize),
+    );
+  }
+
+  return Image.network(
+    url,
+    width: double.infinity,
+    height: double.infinity,
+    fit: BoxFit.cover,
+    loadingBuilder: (context, child, progress) {
+      if (progress == null) return child;
+      return Container(
+        color: pinkLight,
+        alignment: Alignment.center,
+        child: const SizedBox(
+          width: 22,
+          height: 22,
+          child: CircularProgressIndicator(strokeWidth: 2, color: pink),
+        ),
+      );
+    },
+    errorBuilder: (_, __, ___) => Container(
+      color: pinkLight,
+      alignment: Alignment.center,
+      child: Icon(
+        Icons.broken_image_outlined,
+        color: pinkDark,
+        size: iconSize,
+      ),
+    ),
+  );
+}
 
 // ==================== UV CARD ====================
 
@@ -26,12 +71,11 @@ class UvCard extends StatelessWidget {
       builder: (context, snapshot) {
         final uv = snapshot.data;
         final high = uv != null && uv >= 6;
-        final loading =
-            snapshot.connectionState == ConnectionState.waiting;
+        final loading = snapshot.connectionState == ConnectionState.waiting;
 
         return Container(
-          margin: const EdgeInsets.fromLTRB(16, 10, 16, 16),
-          padding: const EdgeInsets.all(17),
+          margin: const EdgeInsets.fromLTRB(16, 10, 16, 18),
+          padding: const EdgeInsets.all(16),
           decoration: BoxDecoration(
             gradient: const LinearGradient(
               colors: [Color(0xFFFFE6EE), Color(0xFFFFF0F4)],
@@ -39,7 +83,7 @@ class UvCard extends StatelessWidget {
             borderRadius: BorderRadius.circular(22),
             boxShadow: [
               BoxShadow(
-                color: pink.withValues(alpha: 0.12),
+                color: pink.withValues(alpha: 0.10),
                 blurRadius: 14,
                 offset: const Offset(0, 5),
               ),
@@ -48,19 +92,19 @@ class UvCard extends StatelessWidget {
           child: Row(
             children: [
               Container(
-                width: 50,
-                height: 50,
+                width: 48,
+                height: 48,
                 decoration: BoxDecoration(
                   color: Colors.white,
-                  borderRadius: BorderRadius.circular(17),
+                  borderRadius: BorderRadius.circular(16),
                 ),
                 child: Icon(
                   Icons.wb_sunny_rounded,
-                  size: 29,
+                  size: 28,
                   color: high ? Colors.deepOrange : pinkDark,
                 ),
               ),
-              const SizedBox(width: 14),
+              const SizedBox(width: 13),
               Expanded(
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
@@ -75,19 +119,19 @@ class UvCard extends StatelessWidget {
                                   : 'Indeks UV hari ini: ${uv.toStringAsFixed(1)}',
                       style: const TextStyle(
                         color: textDark,
-                        fontSize: 15,
+                        fontSize: 14,
                         fontWeight: FontWeight.w800,
                       ),
                     ),
                     const SizedBox(height: 5),
                     Text(
                       high
-                          ? 'UV tinggi! Gunakan sunscreen dan SPF.'
+                          ? 'UV tinggi! Jangan lupa gunakan sunscreen.'
                           : 'Jaga kesehatan kulit sebelum beraktivitas.',
                       style: const TextStyle(
                         color: Color(0xFF856B76),
                         fontSize: 12,
-                        height: 1.5,
+                        height: 1.4,
                       ),
                     ),
                   ],
@@ -97,6 +141,651 @@ class UvCard extends StatelessWidget {
           ),
         );
       },
+    );
+  }
+}
+
+// ==================== HALAMAN KATALOG ====================
+
+class Catalog extends StatefulWidget {
+  const Catalog({super.key});
+
+  @override
+  State<Catalog> createState() => _CatalogState();
+}
+
+class _CatalogState extends State<Catalog> {
+  String category = 'Semua';
+
+  late Future<List<Map<String, dynamic>>> _treatmentFuture;
+
+  static const List<String> categories = [
+    'Semua',
+    'Facial',
+    'Laser',
+    'Peeling',
+    'Konsultasi',
+  ];
+
+  @override
+  void initState() {
+    super.initState();
+    _treatmentFuture = TreatmentApi.fetchTreatments();
+  }
+
+  void _reloadTreatments() {
+    setState(() {
+      _treatmentFuture = TreatmentApi.fetchTreatments();
+    });
+  }
+
+  IconData categoryIcon(String value) {
+    switch (value.toLowerCase()) {
+      case 'facial':
+        return Icons.face_retouching_natural_rounded;
+      case 'laser':
+        return Icons.auto_awesome_rounded;
+      case 'peeling':
+        return Icons.spa_rounded;
+      case 'konsultasi':
+        return Icons.medical_services_outlined;
+      default:
+        return Icons.favorite_rounded;
+    }
+  }
+
+  void _openCategory(String value) {
+    Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (_) => AllTreatmentsPage(
+          treatmentFuture: _treatmentFuture,
+          categories: categories,
+          categoryIcon: categoryIcon,
+          initialCategory: value,
+          onReload: _reloadTreatments,
+        ),
+      ),
+    );
+  }
+
+  void _openAllTreatments() => _openCategory('Semua');
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      color: background,
+      child: ListView(
+        padding: EdgeInsets.zero,
+        children: [
+          const UvCard(),
+
+          Padding(
+            padding: const EdgeInsets.fromLTRB(18, 0, 18, 12),
+            child: Row(
+              children: [
+                const Expanded(
+                  child: Text(
+                    'Kategori Perawatan',
+                    style: TextStyle(
+                      color: textDark,
+                      fontSize: 17,
+                      fontWeight: FontWeight.w800,
+                    ),
+                  ),
+                ),
+                TextButton(
+                  onPressed: _openAllTreatments,
+                  child: const Text(
+                    'Lihat Semua',
+                    style: TextStyle(
+                      color: pinkDark,
+                      fontSize: 11,
+                      fontWeight: FontWeight.w800,
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
+
+          SizedBox(
+            height: 48,
+            child: ListView.separated(
+              scrollDirection: Axis.horizontal,
+              padding: const EdgeInsets.symmetric(horizontal: 16),
+              itemCount: categories.length,
+              separatorBuilder: (_, __) => const SizedBox(width: 9),
+              itemBuilder: (context, index) {
+                final item = categories[index];
+                final selected = category == item;
+
+                return ChoiceChip(
+                  selected: selected,
+                  showCheckmark: false,
+                  avatar: Icon(
+                    categoryIcon(item),
+                    size: 17,
+                    color: selected ? Colors.white : pinkDark,
+                  ),
+                  label: Text(item),
+                  labelStyle: TextStyle(
+                    color: selected ? Colors.white : textDark,
+                    fontSize: 12,
+                    fontWeight: FontWeight.w700,
+                  ),
+                  selectedColor: pink,
+                  backgroundColor: Colors.white,
+                  side: BorderSide(
+                    color: selected ? pink : pinkLight,
+                  ),
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(15),
+                  ),
+                  onSelected: (_) => _openCategory(item),
+                );
+              },
+            ),
+          ),
+
+          const SizedBox(height: 22),
+
+          Padding(
+            padding: const EdgeInsets.fromLTRB(18, 0, 18, 12),
+            child: Row(
+              children: [
+                const Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        'Treatment Pilihan',
+                        style: TextStyle(
+                          color: textDark,
+                          fontSize: 19,
+                          fontWeight: FontWeight.w800,
+                        ),
+                      ),
+                      SizedBox(height: 4),
+                      Text(
+                        'Temukan perawatan untuk kulitmu',
+                        style: TextStyle(
+                          color: textMuted,
+                          fontSize: 11,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+                TextButton(
+                  onPressed: _openAllTreatments,
+                  child: const Text(
+                    'Lihat Semua',
+                    style: TextStyle(
+                      color: pinkDark,
+                      fontWeight: FontWeight.w800,
+                      fontSize: 11,
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
+
+          FutureBuilder<List<Map<String, dynamic>>>(
+            future: _treatmentFuture,
+            builder: (context, snapshot) {
+              if (snapshot.connectionState == ConnectionState.waiting) {
+                return const SizedBox(
+                  height: 174,
+                  child: Center(
+                    child: CircularProgressIndicator(color: pink),
+                  ),
+                );
+              }
+
+              if (snapshot.hasError) {
+                return Padding(
+                  padding: const EdgeInsets.all(18),
+                  child: Column(
+                    children: [
+                      const Text(
+                        'Gagal memuat treatment.',
+                        style: TextStyle(color: textDark),
+                      ),
+                      const SizedBox(height: 8),
+                      OutlinedButton(
+                        onPressed: _reloadTreatments,
+                        child: const Text('Coba Lagi'),
+                      ),
+                    ],
+                  ),
+                );
+              }
+
+              final treatments = (snapshot.data ?? []).take(8).toList();
+
+              if (treatments.isEmpty) {
+                return const SizedBox(
+                  height: 150,
+                  child: Center(
+                    child: Text(
+                      'Belum ada treatment.',
+                      style: TextStyle(color: textMuted),
+                    ),
+                  ),
+                );
+              }
+
+              return TreatmentCarousel(
+                treatments: treatments,
+                onTap: (treatment) {
+                  Navigator.push(
+                    context,
+                    MaterialPageRoute(
+                      builder: (_) => Detail(treatment),
+                    ),
+                  );
+                },
+              );
+            },
+          ),
+
+          const SizedBox(height: 28),
+          const DoctorSection(),
+          const SizedBox(height: 25),
+        ],
+      ),
+    );
+  }
+}
+
+// ==================== CAROUSEL TREATMENT ====================
+
+class TreatmentCarousel extends StatefulWidget {
+  final List<Map<String, dynamic>> treatments;
+  final ValueChanged<Map<String, dynamic>> onTap;
+
+  const TreatmentCarousel({
+    super.key,
+    required this.treatments,
+    required this.onTap,
+  });
+
+  @override
+  State<TreatmentCarousel> createState() => _TreatmentCarouselState();
+}
+
+class _TreatmentCarouselState extends State<TreatmentCarousel> {
+  final ScrollController _controller = ScrollController();
+  Timer? _timer;
+
+  static const double cardWidth = 308;
+  static const double cardGap = 12;
+
+  @override
+  void initState() {
+    super.initState();
+    _startTimer();
+  }
+
+  void _startTimer() {
+    _timer = Timer.periodic(const Duration(seconds: 3), (_) {
+      if (!mounted || !_controller.hasClients) return;
+
+      final position = _controller.position;
+      final max = position.maxScrollExtent;
+
+      if (max <= 0) return;
+
+      final next = _controller.offset + cardWidth + cardGap;
+
+      _controller.animateTo(
+        next >= max - 5 ? 0 : next,
+        duration: const Duration(milliseconds: 500),
+        curve: Curves.easeInOut,
+      );
+    });
+  }
+
+  @override
+  void dispose() {
+    _timer?.cancel();
+    _controller.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return SizedBox(
+      height: 174,
+      child: ScrollConfiguration(
+        behavior: const MaterialScrollBehavior().copyWith(
+          dragDevices: {
+            PointerDeviceKind.touch,
+            PointerDeviceKind.mouse,
+            PointerDeviceKind.trackpad,
+          },
+        ),
+        child: ListView.separated(
+          controller: _controller,
+          scrollDirection: Axis.horizontal,
+          padding: const EdgeInsets.symmetric(horizontal: 16),
+          itemCount: widget.treatments.length,
+          separatorBuilder: (_, __) => const SizedBox(width: cardGap),
+          itemBuilder: (context, index) {
+            final t = widget.treatments[index];
+            final name = t['nama']?.toString() ?? 'Treatment';
+            final kind = t['kategori']?.toString() ?? '-';
+            final photo = t['foto_url']?.toString() ?? '';
+
+            return SizedBox(
+              width: cardWidth,
+              child: Material(
+                color: Colors.white,
+                borderRadius: BorderRadius.circular(20),
+                clipBehavior: Clip.antiAlias,
+                child: InkWell(
+                  onTap: () => widget.onTap(t),
+                  child: Container(
+                    decoration: BoxDecoration(
+                      borderRadius: BorderRadius.circular(20),
+                      border: Border.all(color: pinkLight),
+                    ),
+                    child: Row(
+                      children: [
+                        SizedBox(
+                          width: 120,
+                          height: double.infinity,
+                          child: _treatmentImage(photo, iconSize: 34),
+                        ),
+                        Expanded(
+                          child: Padding(
+                            padding: const EdgeInsets.all(12),
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              mainAxisAlignment: MainAxisAlignment.center,
+                              children: [
+                                Text(
+                                  kind,
+                                  maxLines: 1,
+                                  overflow: TextOverflow.ellipsis,
+                                  style: const TextStyle(
+                                    color: pinkDark,
+                                    fontSize: 10,
+                                    fontWeight: FontWeight.w700,
+                                  ),
+                                ),
+                                const SizedBox(height: 5),
+                                Text(
+                                  name,
+                                  maxLines: 2,
+                                  overflow: TextOverflow.ellipsis,
+                                  style: const TextStyle(
+                                    color: textDark,
+                                    fontSize: 13,
+                                    fontWeight: FontWeight.w800,
+                                  ),
+                                ),
+                                const SizedBox(height: 7),
+                                Text(
+                                  'Rp ${_formatPrice(t['harga_idr'])}',
+                                  maxLines: 1,
+                                  style: const TextStyle(
+                                    color: pinkDark,
+                                    fontSize: 12,
+                                    fontWeight: FontWeight.w800,
+                                  ),
+                                ),
+                                const SizedBox(height: 6),
+                                const Row(
+                                  children: [
+                                    Icon(
+                                      Icons.arrow_forward_rounded,
+                                      color: pinkDark,
+                                      size: 14,
+                                    ),
+                                    SizedBox(width: 4),
+                                    Text(
+                                      'Lihat detail',
+                                      style: TextStyle(
+                                        color: textMuted,
+                                        fontSize: 10,
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                              ],
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+              ),
+            );
+          },
+        ),
+      ),
+    );
+  }
+}
+
+// ==================== SEMUA TREATMENT ====================
+
+class AllTreatmentsPage extends StatefulWidget {
+  final Future<List<Map<String, dynamic>>> treatmentFuture;
+  final List<String> categories;
+  final IconData Function(String) categoryIcon;
+  final VoidCallback onReload;
+  final String initialCategory;
+
+  const AllTreatmentsPage({
+    super.key,
+    required this.treatmentFuture,
+    required this.categories,
+    required this.categoryIcon,
+    required this.onReload,
+    required this.initialCategory,
+  });
+
+  @override
+  State<AllTreatmentsPage> createState() => _AllTreatmentsPageState();
+}
+
+class _AllTreatmentsPageState extends State<AllTreatmentsPage> {
+  late String category;
+
+  @override
+  void initState() {
+    super.initState();
+    category = widget.initialCategory;
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      backgroundColor: background,
+      appBar: AppBar(
+        title: const Text('Semua Treatment'),
+        backgroundColor: background,
+        foregroundColor: textDark,
+        surfaceTintColor: Colors.transparent,
+      ),
+      body: FutureBuilder<List<Map<String, dynamic>>>(
+        future: widget.treatmentFuture,
+        builder: (context, snapshot) {
+          if (snapshot.connectionState == ConnectionState.waiting) {
+            return const Center(
+              child: CircularProgressIndicator(color: pink),
+            );
+          }
+
+          if (snapshot.hasError) {
+            return Center(
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  const Text('Gagal memuat treatment.'),
+                  const SizedBox(height: 8),
+                  FilledButton(
+                    onPressed: widget.onReload,
+                    child: const Text('Coba Lagi'),
+                  ),
+                ],
+              ),
+            );
+          }
+
+          final all = snapshot.data ?? [];
+
+          final filtered = all.where((t) {
+            final kind = (t['kategori'] ?? '').toString().trim();
+            return category == 'Semua' ||
+                kind.toLowerCase() == category.toLowerCase();
+          }).toList();
+
+          return Column(
+            children: [
+              SizedBox(
+                height: 48,
+                child: ListView.separated(
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 16,
+                    vertical: 3,
+                  ),
+                  scrollDirection: Axis.horizontal,
+                  itemCount: widget.categories.length,
+                  separatorBuilder: (_, __) => const SizedBox(width: 8),
+                  itemBuilder: (context, index) {
+                    final item = widget.categories[index];
+                    final selected = category == item;
+
+                    return ChoiceChip(
+                      selected: selected,
+                      showCheckmark: false,
+                      avatar: Icon(
+                        widget.categoryIcon(item),
+                        size: 16,
+                        color: selected ? Colors.white : pinkDark,
+                      ),
+                      label: Text(item),
+                      selectedColor: pink,
+                      backgroundColor: Colors.white,
+                      side: BorderSide(
+                        color: selected ? pink : pinkLight,
+                      ),
+                      labelStyle: TextStyle(
+                        color: selected ? Colors.white : textDark,
+                        fontWeight: FontWeight.w700,
+                      ),
+                      onSelected: (_) => setState(() => category = item),
+                    );
+                  },
+                ),
+              ),
+              const SizedBox(height: 8),
+              Expanded(
+                child: filtered.isEmpty
+                    ? Center(
+                        child: Text(
+                          category == 'Semua'
+                              ? 'Belum ada treatment.'
+                              : 'Treatment kategori $category belum tersedia.',
+                          textAlign: TextAlign.center,
+                          style: const TextStyle(color: textMuted),
+                        ),
+                      )
+                    : ListView.separated(
+                        padding: const EdgeInsets.all(16),
+                        itemCount: filtered.length,
+                        separatorBuilder: (_, __) =>
+                            const SizedBox(height: 10),
+                        itemBuilder: (context, index) {
+                          final t = filtered[index];
+                          final photo = t['foto_url']?.toString() ?? '';
+
+                          return Material(
+                            color: Colors.white,
+                            borderRadius: BorderRadius.circular(18),
+                            clipBehavior: Clip.antiAlias,
+                            child: InkWell(
+                              onTap: () {
+                                Navigator.push(
+                                  context,
+                                  MaterialPageRoute(
+                                    builder: (_) => Detail(t),
+                                  ),
+                                );
+                              },
+                              child: Container(
+                                padding: const EdgeInsets.all(12),
+                                decoration: BoxDecoration(
+                                  borderRadius: BorderRadius.circular(18),
+                                  border: Border.all(color: pinkLight),
+                                ),
+                                child: Row(
+                                  children: [
+                                    ClipRRect(
+                                      borderRadius: BorderRadius.circular(14),
+                                      child: SizedBox(
+                                        width: 88,
+                                        height: 88,
+                                        child: _treatmentImage(photo),
+                                      ),
+                                    ),
+                                    const SizedBox(width: 12),
+                                    Expanded(
+                                      child: Column(
+                                        crossAxisAlignment:
+                                            CrossAxisAlignment.start,
+                                        children: [
+                                          Text(
+                                            t['nama']?.toString() ?? '-',
+                                            maxLines: 2,
+                                            overflow: TextOverflow.ellipsis,
+                                            style: const TextStyle(
+                                              color: textDark,
+                                              fontWeight: FontWeight.w800,
+                                            ),
+                                          ),
+                                          const SizedBox(height: 6),
+                                          Text(
+                                            t['kategori']?.toString() ?? '-',
+                                            style: const TextStyle(
+                                              color: textMuted,
+                                              fontSize: 12,
+                                            ),
+                                          ),
+                                          const SizedBox(height: 8),
+                                          Text(
+                                            'Rp ${_formatPrice(t['harga_idr'])}',
+                                            style: const TextStyle(
+                                              color: pinkDark,
+                                              fontWeight: FontWeight.w800,
+                                            ),
+                                          ),
+                                        ],
+                                      ),
+                                    ),
+                                    const Icon(
+                                      Icons.chevron_right_rounded,
+                                      size: 23,
+                                      color: pinkDark,
+                                    ),
+                                  ],
+                                ),
+                              ),
+                            ),
+                          );
+                        },
+                      ),
+              ),
+            ],
+          );
+        },
+      ),
     );
   }
 }
@@ -111,50 +800,12 @@ class DoctorSection extends StatefulWidget {
 }
 
 class _DoctorSectionState extends State<DoctorSection> {
-  final ScrollController _scrollController = ScrollController();
-
   late Future<List<Map<String, dynamic>>> _doctorFuture;
-  Timer? _autoSlideTimer;
-
-  static const double _cardWidth = 160;
-  static const double _cardGap = 10;
 
   @override
   void initState() {
     super.initState();
-
-    _doctorFuture = qry(
-      'SELECT * FROM doctors ORDER BY nama LIMIT 10',
-    );
-
-    _autoSlideTimer = Timer.periodic(
-      const Duration(seconds: 3),
-      (_) => _autoSlide(),
-    );
-  }
-
-  void _autoSlide() {
-    if (!mounted || !_scrollController.hasClients) return;
-
-    final position = _scrollController.position;
-
-    if (position.maxScrollExtent <= 0) return;
-
-    final nextOffset = _scrollController.offset + _cardWidth + _cardGap;
-
-    if (nextOffset >= position.maxScrollExtent - 5) {
-      _scrollController.animateTo(
-        0,
-        duration: const Duration(milliseconds: 600),
-        curve: Curves.easeInOut,
-      );
-    } else {
-      _scrollController.animateTo(
-        nextOffset,
-        duration: const Duration(milliseconds: 600),
-        curve: Curves.easeInOut,
-      );
-    }
+    _doctorFuture = qry('SELECT * FROM doctors ORDER BY nama LIMIT 10');
   }
 
   void _showDoctorDetail(Map<String, dynamic> doctor) {
@@ -163,28 +814,21 @@ class _DoctorSectionState extends State<DoctorSection> {
       backgroundColor: background,
       isScrollControlled: true,
       shape: const RoundedRectangleBorder(
-        borderRadius: BorderRadius.vertical(
-          top: Radius.circular(26),
-        ),
+        borderRadius: BorderRadius.vertical(top: Radius.circular(26)),
       ),
       builder: (_) => DoctorDetailSheet(doctor: doctor),
     );
   }
 
   void _showAllDoctors() {
-    // Ambil data satu kali agar tidak query ulang setiap widget dibangun.
-    final allDoctorsFuture = qry(
-      'SELECT * FROM doctors ORDER BY nama',
-    );
+    final allDoctorsFuture = qry('SELECT * FROM doctors ORDER BY nama');
 
     showModalBottomSheet(
       context: context,
       backgroundColor: background,
       isScrollControlled: true,
       shape: const RoundedRectangleBorder(
-        borderRadius: BorderRadius.vertical(
-          top: Radius.circular(26),
-        ),
+        borderRadius: BorderRadius.vertical(top: Radius.circular(26)),
       ),
       builder: (sheetContext) {
         return SafeArea(
@@ -192,7 +836,7 @@ class _DoctorSectionState extends State<DoctorSection> {
             height: MediaQuery.of(sheetContext).size.height * 0.82,
             child: Column(
               children: [
-                const SizedBox(height: 10),
+                const SizedBox(height: 12),
                 Container(
                   width: 38,
                   height: 4,
@@ -202,7 +846,7 @@ class _DoctorSectionState extends State<DoctorSection> {
                   ),
                 ),
                 const Padding(
-                  padding: EdgeInsets.fromLTRB(20, 18, 20, 14),
+                  padding: EdgeInsets.all(18),
                   child: Text(
                     'Semua Dokter',
                     style: TextStyle(
@@ -219,9 +863,7 @@ class _DoctorSectionState extends State<DoctorSection> {
                       if (snapshot.connectionState ==
                           ConnectionState.waiting) {
                         return const Center(
-                          child: CircularProgressIndicator(
-                            color: pink,
-                          ),
+                          child: CircularProgressIndicator(color: pink),
                         );
                       }
 
@@ -233,15 +875,9 @@ class _DoctorSectionState extends State<DoctorSection> {
 
                       final doctors = snapshot.data ?? [];
 
-                      if (doctors.isEmpty) {
-                        return const Center(
-                          child: Text('Belum ada data dokter.'),
-                        );
-                      }
-
-                      // KARTU DOKTER BERBENTUK GRID 2 KOLOM
                       return GridView.builder(
-                        padding: const EdgeInsets.fromLTRB(16, 4, 16, 20),
+                        padding: const EdgeInsets.all(16),
+                        itemCount: doctors.length,
                         gridDelegate:
                             const SliverGridDelegateWithFixedCrossAxisCount(
                           crossAxisCount: 2,
@@ -249,24 +885,16 @@ class _DoctorSectionState extends State<DoctorSection> {
                           mainAxisSpacing: 12,
                           childAspectRatio: 0.82,
                         ),
-                        itemCount: doctors.length,
                         itemBuilder: (context, index) {
                           final doctor = doctors[index];
                           final photo =
                               doctor['photo_path']?.toString() ?? '';
-                          final name =
-                              doctor['nama']?.toString() ?? 'Dokter';
-                          final specialization =
-                              doctor['spesialisasi']?.toString() ?? '-';
-                          final schedule =
-                              doctor['jadwal_praktik']?.toString().trim() ??
-                                  '';
 
                           return Material(
                             color: Colors.white,
                             borderRadius: BorderRadius.circular(18),
+                            clipBehavior: Clip.antiAlias,
                             child: InkWell(
-                              borderRadius: BorderRadius.circular(18),
                               onTap: () {
                                 Navigator.pop(sheetContext);
                                 _showDoctorDetail(doctor);
@@ -278,52 +906,32 @@ class _DoctorSectionState extends State<DoctorSection> {
                                   border: Border.all(color: pinkLight),
                                 ),
                                 child: Column(
-                                  crossAxisAlignment:
-                                      CrossAxisAlignment.center,
                                   children: [
                                     Expanded(
                                       child: ClipRRect(
-                                        borderRadius:
-                                            BorderRadius.circular(13),
+                                        borderRadius: BorderRadius.circular(13),
                                         child: Container(
                                           width: double.infinity,
                                           color: pinkLight,
-                                          child: photo.startsWith('assets/')
-                                              ? Image.asset(
-                                                  photo,
-                                                  fit: BoxFit.cover,
-                                                  errorBuilder:
-                                                      (_, __, ___) =>
-                                                          const Icon(
-                                                    Icons.person_rounded,
-                                                    color: pink,
-                                                    size: 44,
-                                                  ),
-                                                )
-                                              : const Icon(
-                                                  Icons.person_rounded,
-                                                  color: pink,
-                                                  size: 44,
-                                                ),
+                                          child: _doctorImage(photo, size: 40),
                                         ),
                                       ),
                                     ),
-                                    const SizedBox(height: 9),
+                                    const SizedBox(height: 8),
                                     Text(
-                                      name,
-                                      textAlign: TextAlign.center,
+                                      doctor['nama']?.toString() ?? 'Dokter',
                                       maxLines: 2,
                                       overflow: TextOverflow.ellipsis,
+                                      textAlign: TextAlign.center,
                                       style: const TextStyle(
                                         color: textDark,
-                                        fontSize: 12,
                                         fontWeight: FontWeight.w800,
+                                        fontSize: 12,
                                       ),
                                     ),
                                     const SizedBox(height: 4),
                                     Text(
-                                      specialization,
-                                      textAlign: TextAlign.center,
+                                      doctor['spesialisasi']?.toString() ?? '-',
                                       maxLines: 1,
                                       overflow: TextOverflow.ellipsis,
                                       style: const TextStyle(
@@ -331,32 +939,6 @@ class _DoctorSectionState extends State<DoctorSection> {
                                         fontSize: 10,
                                       ),
                                     ),
-                                    const SizedBox(height: 7),
-                                    // Jadwal dibuat lebih kecil.
-                                    if (schedule.isNotEmpty)
-                                      Container(
-                                        padding: const EdgeInsets.symmetric(
-                                          horizontal: 7,
-                                          vertical: 4,
-                                        ),
-                                        decoration: BoxDecoration(
-                                          color: pinkLight,
-                                          borderRadius:
-                                              BorderRadius.circular(10),
-                                        ),
-                                        child: Text(
-                                          schedule,
-                                          textAlign: TextAlign.center,
-                                          maxLines: 2,
-                                          overflow: TextOverflow.ellipsis,
-                                          style: const TextStyle(
-                                            color: pinkDark,
-                                            fontSize: 9,
-                                            fontWeight: FontWeight.w700,
-                                            height: 1.2,
-                                          ),
-                                        ),
-                                      ),
                                   ],
                                 ),
                               ),
@@ -376,13 +958,6 @@ class _DoctorSectionState extends State<DoctorSection> {
   }
 
   @override
-  void dispose() {
-    _autoSlideTimer?.cancel();
-    _scrollController.dispose();
-    super.dispose();
-  }
-
-  @override
   Widget build(BuildContext context) {
     return FutureBuilder<List<Map<String, dynamic>>>(
       future: _doctorFuture,
@@ -390,9 +965,7 @@ class _DoctorSectionState extends State<DoctorSection> {
         if (snapshot.connectionState == ConnectionState.waiting) {
           return const Padding(
             padding: EdgeInsets.all(20),
-            child: Center(
-              child: CircularProgressIndicator(color: pink),
-            ),
+            child: Center(child: CircularProgressIndicator(color: pink)),
           );
         }
 
@@ -416,7 +989,7 @@ class _DoctorSectionState extends State<DoctorSection> {
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             Padding(
-              padding: const EdgeInsets.fromLTRB(18, 4, 18, 12),
+              padding: const EdgeInsets.fromLTRB(18, 0, 18, 12),
               child: Row(
                 children: [
                   const Expanded(
@@ -424,47 +997,19 @@ class _DoctorSectionState extends State<DoctorSection> {
                       'Dokter Pilihan',
                       style: TextStyle(
                         color: textDark,
-                        fontSize: 17,
+                        fontSize: 18,
                         fontWeight: FontWeight.w800,
                       ),
                     ),
                   ),
-                  Material(
-                    color: const Color(0xFFFFE6EE),
-                    borderRadius: BorderRadius.circular(14),
-                    child: InkWell(
-                      onTap: _showAllDoctors,
-                      borderRadius: BorderRadius.circular(14),
-                      child: Container(
-                        padding: const EdgeInsets.symmetric(
-                          horizontal: 12,
-                          vertical: 8,
-                        ),
-                        decoration: BoxDecoration(
-                          borderRadius: BorderRadius.circular(14),
-                          border: Border.all(
-                            color: const Color(0xFFF5DFE7),
-                          ),
-                        ),
-                        child: const Row(
-                          mainAxisSize: MainAxisSize.min,
-                          children: [
-                            Text(
-                              'See All',
-                              style: TextStyle(
-                                color: pinkDark,
-                                fontSize: 11,
-                                fontWeight: FontWeight.w800,
-                              ),
-                            ),
-                            SizedBox(width: 4),
-                            Icon(
-                              Icons.arrow_forward_rounded,
-                              color: pinkDark,
-                              size: 14,
-                            ),
-                          ],
-                        ),
+                  TextButton(
+                    onPressed: _showAllDoctors,
+                    child: const Text(
+                      'Lihat Semua',
+                      style: TextStyle(
+                        color: pinkDark,
+                        fontSize: 11,
+                        fontWeight: FontWeight.w800,
                       ),
                     ),
                   ),
@@ -472,7 +1017,7 @@ class _DoctorSectionState extends State<DoctorSection> {
               ),
             ),
             SizedBox(
-              height: 248,
+              height: 220,
               child: ScrollConfiguration(
                 behavior: const MaterialScrollBehavior().copyWith(
                   dragDevices: {
@@ -482,14 +1027,10 @@ class _DoctorSectionState extends State<DoctorSection> {
                   },
                 ),
                 child: ListView.separated(
-                  controller: _scrollController,
-                  primary: false,
                   scrollDirection: Axis.horizontal,
-                  physics: const ClampingScrollPhysics(),
                   padding: const EdgeInsets.symmetric(horizontal: 16),
                   itemCount: doctors.length,
-                  separatorBuilder: (_, __) =>
-                      const SizedBox(width: _cardGap),
+                  separatorBuilder: (_, __) => const SizedBox(width: 12),
                   itemBuilder: (context, index) {
                     final doctor = doctors[index];
                     final photo =
@@ -498,20 +1039,18 @@ class _DoctorSectionState extends State<DoctorSection> {
                         doctor['jadwal_praktik']?.toString().trim() ?? '';
 
                     return SizedBox(
-                      width: _cardWidth,
+                      width: 150,
                       child: Material(
                         color: Colors.white,
-                        borderRadius: BorderRadius.circular(17),
+                        borderRadius: BorderRadius.circular(18),
+                        clipBehavior: Clip.antiAlias,
                         child: InkWell(
-                          borderRadius: BorderRadius.circular(17),
                           onTap: () => _showDoctorDetail(doctor),
                           child: Container(
                             padding: const EdgeInsets.all(9),
                             decoration: BoxDecoration(
-                              borderRadius: BorderRadius.circular(17),
-                              border: Border.all(
-                                color: const Color(0xFFF5DFE7),
-                              ),
+                              borderRadius: BorderRadius.circular(18),
+                              border: Border.all(color: pinkLight),
                             ),
                             child: Column(
                               crossAxisAlignment: CrossAxisAlignment.start,
@@ -519,28 +1058,13 @@ class _DoctorSectionState extends State<DoctorSection> {
                                 ClipRRect(
                                   borderRadius: BorderRadius.circular(12),
                                   child: Container(
-                                    height: 104,
+                                    height: 95,
                                     width: double.infinity,
                                     color: pinkLight,
-                                    child: photo.startsWith('assets/')
-                                        ? Image.asset(
-                                            photo,
-                                            fit: BoxFit.cover,
-                                            errorBuilder: (_, __, ___) =>
-                                                const Icon(
-                                              Icons.person_rounded,
-                                              size: 40,
-                                              color: pink,
-                                            ),
-                                          )
-                                        : const Icon(
-                                            Icons.person_rounded,
-                                            size: 40,
-                                            color: pink,
-                                          ),
+                                    child: _doctorImage(photo, size: 38),
                                   ),
                                 ),
-                                const SizedBox(height: 7),
+                                const SizedBox(height: 8),
                                 Text(
                                   doctor['nama']?.toString() ?? 'Dokter',
                                   maxLines: 1,
@@ -561,70 +1085,39 @@ class _DoctorSectionState extends State<DoctorSection> {
                                     fontSize: 10,
                                   ),
                                 ),
-                                const SizedBox(height: 5),
-                                const Row(
-                                  children: [
-                                    Icon(
-                                      Icons.star_rounded,
-                                      color: Color(0xFFFFB547),
-                                      size: 13,
-                                    ),
-                                    SizedBox(width: 3),
-                                    Text(
-                                      '4,9',
-                                      style: TextStyle(
-                                        color: textDark,
-                                        fontSize: 10,
-                                        fontWeight: FontWeight.w800,
-                                      ),
-                                    ),
-                                    Text(
-                                      ' / 5,0',
-                                      style: TextStyle(
-                                        color: textMuted,
-                                        fontSize: 9,
-                                      ),
-                                    ),
-                                  ],
-                                ),
                                 const Spacer(),
-                                // Jadwal satu baris dalam kotak oval selebar kartu.
-                                SizedBox(
-                                  width: double.infinity,
-                                  child: Container(
-                                    padding: const EdgeInsets.symmetric(
-                                      horizontal: 8,
-                                      vertical: 7,
-                                    ),
-                                    decoration: BoxDecoration(
-                                      color: pinkLight,
-                                      borderRadius: BorderRadius.circular(30),
-                                    ),
-                                    child: Row(
-                                      children: [
-                                        const Icon(
-                                          Icons.schedule_rounded,
-                                          color: pinkDark,
-                                          size: 12,
-                                        ),
-                                        const SizedBox(width: 5),
-                                        Expanded(
-                                          child: Text(
-                                            schedule.isEmpty
-                                                ? 'Jadwal belum tersedia'
-                                                : schedule.replaceAll('\n', ' '),
-                                            maxLines: 1,
-                                            softWrap: false,
-                                            overflow: TextOverflow.ellipsis,
-                                            style: const TextStyle(
-                                              color: pinkDark,
-                                              fontSize: 9,
-                                              fontWeight: FontWeight.w700,
-                                            ),
+                                Container(
+                                  padding: const EdgeInsets.symmetric(
+                                    horizontal: 7,
+                                    vertical: 6,
+                                  ),
+                                  decoration: BoxDecoration(
+                                    color: pinkLight,
+                                    borderRadius: BorderRadius.circular(20),
+                                  ),
+                                  child: Row(
+                                    children: [
+                                      const Icon(
+                                        Icons.schedule_rounded,
+                                        size: 12,
+                                        color: pinkDark,
+                                      ),
+                                      const SizedBox(width: 4),
+                                      Expanded(
+                                        child: Text(
+                                          schedule.isEmpty
+                                              ? 'Jadwal belum tersedia'
+                                              : schedule.replaceAll('\n', ' '),
+                                          maxLines: 1,
+                                          overflow: TextOverflow.ellipsis,
+                                          style: const TextStyle(
+                                            color: pinkDark,
+                                            fontSize: 9,
+                                            fontWeight: FontWeight.w700,
                                           ),
                                         ),
-                                      ],
-                                    ),
+                                      ),
+                                    ],
                                   ),
                                 ),
                               ],
@@ -644,15 +1137,28 @@ class _DoctorSectionState extends State<DoctorSection> {
   }
 }
 
+Widget _doctorImage(String photo, {required double size}) {
+  if (photo.startsWith('assets/')) {
+    return Image.asset(
+      photo,
+      fit: BoxFit.cover,
+      errorBuilder: (_, __, ___) => Icon(
+        Icons.person_rounded,
+        size: size,
+        color: pink,
+      ),
+    );
+  }
+
+  return Icon(Icons.person_rounded, size: size, color: pink);
+}
+
 // ==================== DETAIL DOKTER ====================
 
 class DoctorDetailSheet extends StatelessWidget {
   final Map<String, dynamic> doctor;
 
-  const DoctorDetailSheet({
-    super.key,
-    required this.doctor,
-  });
+  const DoctorDetailSheet({super.key, required this.doctor});
 
   @override
   Widget build(BuildContext context) {
@@ -670,23 +1176,11 @@ class DoctorDetailSheet extends StatelessWidget {
                 radius: 48,
                 backgroundColor: pinkLight,
                 child: ClipOval(
-                  child: photo.startsWith('assets/')
-                      ? Image.asset(
-                          photo,
-                          width: 96,
-                          height: 96,
-                          fit: BoxFit.cover,
-                          errorBuilder: (_, __, ___) => const Icon(
-                            Icons.person_rounded,
-                            size: 55,
-                            color: pink,
-                          ),
-                        )
-                      : const Icon(
-                          Icons.person_rounded,
-                          size: 55,
-                          color: pink,
-                        ),
+                  child: SizedBox(
+                    width: 96,
+                    height: 96,
+                    child: _doctorImage(photo, size: 55),
+                  ),
                 ),
               ),
             ),
@@ -713,27 +1207,14 @@ class DoctorDetailSheet extends StatelessWidget {
               ),
             ),
             const SizedBox(height: 22),
-            _info(
-              Icons.school_outlined,
-              'Pendidikan',
-              doctor['pendidikan']?.toString() ?? '-',
-            ),
-            _info(
-              Icons.work_outline,
-              'Pengalaman',
-              '${doctor['pengalaman_tahun'] ?? 0} tahun',
-            ),
-            _info(
-              Icons.calendar_month_outlined,
-              'Jadwal praktik',
-              doctor['jadwal_praktik']?.toString() ?? '-',
-            ),
-            _info(
-              Icons.info_outline,
-              'Tentang dokter',
-              doctor['deskripsi']?.toString() ?? '-',
-            ),
-            const SizedBox(height: 10),
+            _info(Icons.school_outlined, 'Pendidikan',
+                doctor['pendidikan']?.toString() ?? '-'),
+            _info(Icons.work_outline, 'Pengalaman',
+                '${doctor['pengalaman_tahun'] ?? 0} tahun'),
+            _info(Icons.calendar_month_outlined, 'Jadwal praktik',
+                doctor['jadwal_praktik']?.toString() ?? '-'),
+            _info(Icons.info_outline, 'Tentang dokter',
+                doctor['deskripsi']?.toString() ?? '-'),
           ],
         ),
       ),
@@ -762,10 +1243,7 @@ class DoctorDetailSheet extends StatelessWidget {
               children: [
                 Text(
                   title,
-                  style: const TextStyle(
-                    color: textMuted,
-                    fontSize: 11,
-                  ),
+                  style: const TextStyle(color: textMuted, fontSize: 11),
                 ),
                 const SizedBox(height: 4),
                 Text(
@@ -785,509 +1263,448 @@ class DoctorDetailSheet extends StatelessWidget {
   }
 }
 
-// ==================== KATALOG PERAWATAN ====================
-
-class Catalog extends StatefulWidget {
-  const Catalog({super.key});
-
-  @override
-  State<Catalog> createState() => _CatalogState();
-}
-
-class _CatalogState extends State<Catalog> {
-  String q = '';
-  String category = 'Semua';
-
-  static const categories = [
-    'Semua',
-    'Facial',
-    'Laser',
-    'Peeling',
-    'Konsultasi',
-  ];
-
-  IconData categoryIcon(String value) {
-    switch (value) {
-      case 'Facial':
-        return Icons.face_retouching_natural_rounded;
-      case 'Laser':
-        return Icons.auto_awesome_rounded;
-      case 'Peeling':
-        return Icons.spa_rounded;
-      case 'Konsultasi':
-        return Icons.medical_services_outlined;
-      default:
-        return Icons.favorite_rounded;
-    }
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      color: background,
-      child: ListView(
-        padding: EdgeInsets.zero,
-        children: [
-          const UvCard(),
-          Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 16),
-            child: Container(
-              decoration: BoxDecoration(
-                color: Colors.white,
-                borderRadius: BorderRadius.circular(17),
-                border: Border.all(
-                  color: const Color(0xFFF5DFE7),
-                ),
-              ),
-              child: TextField(
-                onChanged: (value) => setState(() => q = value),
-                decoration: InputDecoration(
-                  hintText: 'Cari perawatan kulit...',
-                  hintStyle: const TextStyle(
-                    color: textMuted,
-                    fontSize: 13,
-                  ),
-                  prefixIcon: const Icon(
-                    Icons.search_rounded,
-                    color: pink,
-                  ),
-                  suffixIcon: q.isNotEmpty
-                      ? IconButton(
-                          icon: const Icon(
-                            Icons.close,
-                            color: textMuted,
-                          ),
-                          onPressed: () => setState(() => q = ''),
-                        )
-                      : null,
-                  border: InputBorder.none,
-                  contentPadding:
-                      const EdgeInsets.symmetric(vertical: 16),
-                ),
-              ),
-            ),
-          ),
-          const SizedBox(height: 20),
-          const Padding(
-            padding: EdgeInsets.symmetric(horizontal: 18),
-            child: Text(
-              'Kategori Perawatan',
-              style: TextStyle(
-                color: textDark,
-                fontSize: 17,
-                fontWeight: FontWeight.w800,
-              ),
-            ),
-          ),
-          const SizedBox(height: 12),
-          SizedBox(
-            height: 88,
-            child: ScrollConfiguration(
-              behavior: const MaterialScrollBehavior().copyWith(
-                dragDevices: {
-                  PointerDeviceKind.touch,
-                  PointerDeviceKind.mouse,
-                  PointerDeviceKind.trackpad,
-                },
-              ),
-              child: ListView.separated(
-                primary: false,
-                physics: const ClampingScrollPhysics(),
-                padding: const EdgeInsets.symmetric(horizontal: 16),
-                scrollDirection: Axis.horizontal,
-                itemCount: categories.length,
-                separatorBuilder: (_, __) =>
-                    const SizedBox(width: 11),
-                itemBuilder: (context, index) {
-                  final item = categories[index];
-                  final selected = category == item;
-
-                  return GestureDetector(
-                    onTap: () => setState(() => category = item),
-                    child: AnimatedContainer(
-                      duration: const Duration(milliseconds: 180),
-                      width: 83,
-                      padding: const EdgeInsets.all(9),
-                      decoration: BoxDecoration(
-                        color: selected ? pink : Colors.white,
-                        borderRadius: BorderRadius.circular(20),
-                        border: Border.all(
-                          color: selected
-                              ? pink
-                              : const Color(0xFFF4DFE7),
-                        ),
-                      ),
-                      child: Column(
-                        mainAxisAlignment: MainAxisAlignment.center,
-                        children: [
-                          Icon(
-                            categoryIcon(item),
-                            color: selected ? Colors.white : pinkDark,
-                            size: 25,
-                          ),
-                          const SizedBox(height: 6),
-                          Text(
-                            item,
-                            maxLines: 1,
-                            overflow: TextOverflow.ellipsis,
-                            style: TextStyle(
-                              color: selected ? Colors.white : textDark,
-                              fontSize: 10,
-                              fontWeight: FontWeight.w700,
-                            ),
-                          ),
-                        ],
-                      ),
-                    ),
-                  );
-                },
-              ),
-            ),
-          ),
-          const SizedBox(height: 20),
-          const DoctorSection(),
-          const Padding(
-            padding: EdgeInsets.fromLTRB(18, 22, 18, 12),
-            child: Text(
-              'Pilihan Untukmu',
-              style: TextStyle(
-                color: textDark,
-                fontSize: 17,
-                fontWeight: FontWeight.w800,
-              ),
-            ),
-          ),
-          FutureBuilder<List<Map<String, dynamic>>>(
-            future: qry(
-              'SELECT * FROM treatments WHERE nama LIKE ?',
-              ['%$q%'],
-            ),
-            builder: (context, snapshot) {
-              if (snapshot.connectionState == ConnectionState.waiting) {
-                return const Padding(
-                  padding: EdgeInsets.all(30),
-                  child: Center(
-                    child: CircularProgressIndicator(color: pink),
-                  ),
-                );
-              }
-
-              if (snapshot.hasError) {
-                return Padding(
-                  padding: const EdgeInsets.all(20),
-                  child: Column(
-                    children: [
-                      const Icon(
-                        Icons.error_outline,
-                        color: pinkDark,
-                        size: 42,
-                      ),
-                      const SizedBox(height: 10),
-                      const Text('Gagal memuat daftar layanan.'),
-                      const SizedBox(height: 10),
-                      FilledButton(
-                        onPressed: () => setState(() {}),
-                        child: const Text('Coba Lagi'),
-                      ),
-                    ],
-                  ),
-                );
-              }
-
-              final treatments =
-                  snapshot.data ?? <Map<String, dynamic>>[];
-
-              final filtered = treatments.where((t) {
-                if (category == 'Semua') return true;
-
-                return (t['kategori']?.toString().toLowerCase() ?? '') ==
-                    category.toLowerCase();
-              }).toList();
-
-              if (filtered.isEmpty) {
-                return const Padding(
-                  padding: EdgeInsets.all(25),
-                  child: Center(
-                    child: Text(
-                      'Layanan tidak ditemukan.',
-                      style: TextStyle(color: textMuted),
-                    ),
-                  ),
-                );
-              }
-
-              return ListView.separated(
-                shrinkWrap: true,
-                physics: const NeverScrollableScrollPhysics(),
-                padding: const EdgeInsets.fromLTRB(16, 0, 16, 20),
-                itemCount: filtered.length,
-                separatorBuilder: (_, __) =>
-                    const SizedBox(height: 12),
-                itemBuilder: (context, index) {
-                  final treatment = filtered[index];
-                  final name =
-                      treatment['nama']?.toString() ?? 'Tanpa nama';
-                  final kind =
-                      treatment['kategori']?.toString() ?? '-';
-                  final price = treatment['harga_idr'];
-
-                  return Material(
-                    color: Colors.white,
-                    borderRadius: BorderRadius.circular(21),
-                    child: InkWell(
-                      borderRadius: BorderRadius.circular(21),
-                      onTap: () {
-                        Navigator.push(
-                          context,
-                          MaterialPageRoute(
-                            builder: (_) => Detail(treatment),
-                          ),
-                        );
-                      },
-                      child: Container(
-                        padding: const EdgeInsets.all(14),
-                        decoration: BoxDecoration(
-                          borderRadius: BorderRadius.circular(21),
-                          border: Border.all(
-                            color: const Color(0xFFF5E4EA),
-                          ),
-                        ),
-                        child: Row(
-                          children: [
-                            Container(
-                              width: 57,
-                              height: 57,
-                              decoration: BoxDecoration(
-                                color: pinkLight,
-                                borderRadius: BorderRadius.circular(17),
-                              ),
-                              child: Icon(
-                                categoryIcon(kind),
-                                color: pinkDark,
-                                size: 28,
-                              ),
-                            ),
-                            const SizedBox(width: 13),
-                            Expanded(
-                              child: Column(
-                                crossAxisAlignment:
-                                    CrossAxisAlignment.start,
-                                children: [
-                                  Text(
-                                    name,
-                                    style: const TextStyle(
-                                      color: textDark,
-                                      fontSize: 14,
-                                      fontWeight: FontWeight.w800,
-                                    ),
-                                  ),
-                                  const SizedBox(height: 5),
-                                  Text(
-                                    kind,
-                                    style: const TextStyle(
-                                      color: textMuted,
-                                      fontSize: 11,
-                                    ),
-                                  ),
-                                  const SizedBox(height: 7),
-                                  Text(
-                                    'Rp ${price ?? '-'}',
-                                    style: const TextStyle(
-                                      color: pinkDark,
-                                      fontSize: 13,
-                                      fontWeight: FontWeight.w800,
-                                    ),
-                                  ),
-                                ],
-                              ),
-                            ),
-                            const Icon(
-                              Icons.arrow_forward_ios_rounded,
-                              color: pinkDark,
-                              size: 15,
-                            ),
-                          ],
-                        ),
-                      ),
-                    ),
-                  );
-                },
-              );
-            },
-          ),
-        ],
-      ),
-    );
-  }
-}
-
-// ==================== DETAIL LAYANAN ====================
+// ==================== DETAIL TREATMENT ====================
 
 class Detail extends StatelessWidget {
   final Map<String, dynamic> t;
 
   const Detail(this.t, {super.key});
 
+  static const Color _rose = Color(0xFFC47787);
+  static const Color _softRose = Color(0xFFF9E8EB);
+
   @override
   Widget build(BuildContext context) {
     final price = t['harga_idr'];
+    final photoUrl = t['foto_url']?.toString().trim() ?? '';
+    final name = t['nama']?.toString() ?? 'Detail Treatment';
+    final category = t['kategori']?.toString() ?? '-';
+    final description =
+        t['deskripsi']?.toString() ?? 'Belum ada deskripsi treatment.';
+    final duration = t['durasi_menit']?.toString() ?? '-';
 
     return Scaffold(
       backgroundColor: background,
       appBar: AppBar(
-        title: Text(t['nama']?.toString() ?? 'Detail Layanan'),
         backgroundColor: background,
         foregroundColor: textDark,
         surfaceTintColor: Colors.transparent,
+        elevation: 0,
+        title: Text(
+          name,
+          maxLines: 1,
+          overflow: TextOverflow.ellipsis,
+          style: const TextStyle(
+            fontSize: 19,
+            fontWeight: FontWeight.w700,
+            color: textDark,
+          ),
+        ),
       ),
-      body: ListView(
-        padding: const EdgeInsets.all(18),
-        children: [
-          Container(
-            padding: const EdgeInsets.all(23),
-            decoration: BoxDecoration(
-              gradient: const LinearGradient(
-                colors: [
-                  Color(0xFFFFE1EA),
-                  Color(0xFFFFF0F4),
+      body: SafeArea(
+        top: false,
+        child: ListView(
+          padding: const EdgeInsets.fromLTRB(20, 8, 20, 28),
+          children: [
+            ClipRRect(
+              borderRadius: BorderRadius.circular(26),
+              child: SizedBox(
+                width: double.infinity,
+                height: 245,
+                child: Stack(
+                  fit: StackFit.expand,
+                  children: [
+                    _treatmentImage(photoUrl, iconSize: 65),
+                    Positioned(
+                      top: 16,
+                      left: 16,
+                      child: Container(
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 15,
+                          vertical: 9,
+                        ),
+                        decoration: BoxDecoration(
+                          color: Colors.white.withValues(alpha: 0.92),
+                          borderRadius: BorderRadius.circular(30),
+                        ),
+                        child: Text(
+                          category,
+                          style: const TextStyle(
+                            color: pinkDark,
+                            fontWeight: FontWeight.w800,
+                            fontSize: 12,
+                          ),
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+            const SizedBox(height: 24),
+            Text(
+              name,
+              style: const TextStyle(
+                color: textDark,
+                fontSize: 27,
+                fontWeight: FontWeight.w800,
+                height: 1.2,
+              ),
+            ),
+            const SizedBox(height: 9),
+            Text(
+              category,
+              style: const TextStyle(
+                color: pinkDark,
+                fontSize: 14,
+                fontWeight: FontWeight.w700,
+              ),
+            ),
+            const SizedBox(height: 12),
+            Text(
+              description,
+              style: const TextStyle(
+                color: textMuted,
+                fontSize: 14,
+                height: 1.7,
+              ),
+            ),
+            const SizedBox(height: 24),
+            const Text(
+              'Keunggulan Perawatan',
+              style: TextStyle(
+                color: textDark,
+                fontSize: 17,
+                fontWeight: FontWeight.w800,
+              ),
+            ),
+            const SizedBox(height: 13),
+            Container(
+              padding: const EdgeInsets.symmetric(
+                horizontal: 8,
+                vertical: 18,
+              ),
+              decoration: BoxDecoration(
+                color: const Color(0xFFFFF1F2),
+                borderRadius: BorderRadius.circular(22),
+                border: Border.all(color: pinkLight),
+              ),
+              child: const Row(
+                children: [
+                  Expanded(
+                    child: _TreatmentBenefit(
+                      icon: Icons.spa_outlined,
+                      label: 'Perawatan\nkulit',
+                    ),
+                  ),
+                  Expanded(
+                    child: _TreatmentBenefit(
+                      icon: Icons.auto_awesome_outlined,
+                      label: 'Kulit tampak\nlebih segar',
+                    ),
+                  ),
+                  Expanded(
+                    child: _TreatmentBenefit(
+                      icon: Icons.water_drop_outlined,
+                      label: 'Perawatan\nintensif',
+                    ),
+                  ),
+                  Expanded(
+                    child: _TreatmentBenefit(
+                      icon: Icons.face_retouching_natural,
+                      label: 'Kulit lebih\nterawat',
+                    ),
+                  ),
                 ],
               ),
-              borderRadius: BorderRadius.circular(25),
             ),
-            child: const Icon(
-              Icons.spa_rounded,
-              color: pinkDark,
-              size: 65,
-            ),
-          ),
-          const SizedBox(height: 22),
-          Text(
-            t['nama']?.toString() ?? 'Detail Layanan',
-            style: const TextStyle(
-              color: textDark,
-              fontSize: 23,
-              fontWeight: FontWeight.w800,
-            ),
-          ),
-          const SizedBox(height: 10),
-          Text(
-            t['deskripsi']?.toString() ?? 'Tidak ada deskripsi.',
-            style: const TextStyle(
-              color: Color(0xFF856B76),
-              fontSize: 14,
-              height: 1.6,
-            ),
-          ),
-          const SizedBox(height: 20),
-          Container(
-            padding: const EdgeInsets.all(18),
-            decoration: BoxDecoration(
-              color: Colors.white,
-              borderRadius: BorderRadius.circular(20),
-              border: Border.all(color: pinkLight),
-            ),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                const Text(
-                  'Harga perawatan',
-                  style: TextStyle(
-                    color: textMuted,
-                    fontSize: 12,
+            const SizedBox(height: 22),
+            Container(
+              padding: const EdgeInsets.all(20),
+              decoration: BoxDecoration(
+                color: Colors.white,
+                borderRadius: BorderRadius.circular(24),
+                border: Border.all(color: pinkLight),
+                boxShadow: [
+                  BoxShadow(
+                    color: pink.withValues(alpha: 0.06),
+                    blurRadius: 18,
+                    offset: const Offset(0, 7),
                   ),
-                ),
-                const SizedBox(height: 6),
-                Text(
-                  'Rp ${price ?? '-'}',
-                  style: const TextStyle(
-                    color: pinkDark,
-                    fontSize: 23,
-                    fontWeight: FontWeight.w800,
-                  ),
-                ),
-              ],
-            ),
-          ),
-          const SizedBox(height: 20),
-          const Text(
-            'Referensi Kurs',
-            style: TextStyle(
-              color: textDark,
-              fontSize: 16,
-              fontWeight: FontWeight.w800,
-            ),
-          ),
-          const SizedBox(height: 10),
-          FutureBuilder<Map<String, double>>(
-            future: fetchRates(),
-            builder: (context, snapshot) {
-              if (snapshot.hasError) {
-                return const Text('Kurs tidak tersedia.');
-              }
-
-              if (snapshot.connectionState == ConnectionState.waiting) {
-                return const LinearProgressIndicator(color: pink);
-              }
-
-              final rates = snapshot.data;
-
-              if (rates == null || rates.isEmpty) {
-                return const Text('Data kurs belum tersedia.');
-              }
-
-              final numericPrice = price is num
-                  ? price.toDouble()
-                  : double.tryParse(price?.toString() ?? '');
-
-              if (numericPrice == null) {
-                return const Text(
-                  'Harga layanan tidak valid untuk konversi kurs.',
-                );
-              }
-
-              return Text(
-                rates.entries
-                    .map(
-                      (entry) =>
-                          '${entry.key} '
-                          '${(numericPrice * entry.value).toStringAsFixed(2)}',
-                    )
-                    .join('  |  '),
-                style: const TextStyle(
-                  color: textDark,
-                  fontSize: 12,
-                  height: 1.8,
-                ),
-              );
-            },
-          ),
-          const SizedBox(height: 28),
-          SizedBox(
-            height: 54,
-            child: FilledButton(
-              style: FilledButton.styleFrom(
-                backgroundColor: pink,
-                foregroundColor: Colors.white,
+                ],
               ),
-              onPressed: () {
-                Navigator.push(
-                  context,
-                  MaterialPageRoute(
-                    builder: (_) => BookingScreen(t),
+              child: Row(
+                children: [
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        const Text(
+                          'Harga perawatan',
+                          style: TextStyle(
+                            color: textMuted,
+                            fontSize: 12,
+                          ),
+                        ),
+                        const SizedBox(height: 8),
+                        Text(
+                          'Rp ${_formatPrice(price)}',
+                          style: const TextStyle(
+                            color: pinkDark,
+                            fontSize: 25,
+                            fontWeight: FontWeight.w900,
+                          ),
+                        ),
+                        const SizedBox(height: 14),
+                        Row(
+                          children: [
+                            const Icon(
+                              Icons.schedule_rounded,
+                              color: _rose,
+                              size: 19,
+                            ),
+                            const SizedBox(width: 7),
+                            Text(
+                              '$duration menit',
+                              style: const TextStyle(
+                                color: textMuted,
+                                fontSize: 12,
+                                fontWeight: FontWeight.w600,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ],
+                    ),
                   ),
-                );
-              },
-              child: const Text(
-                'Pilih & Booking',
-                style: TextStyle(
-                  fontSize: 15,
-                  fontWeight: FontWeight.w800,
-                ),
+                  Container(
+                    width: 76,
+                    height: 76,
+                    decoration: const BoxDecoration(
+                      color: _softRose,
+                      shape: BoxShape.circle,
+                    ),
+                    child: const Icon(
+                      Icons.spa_rounded,
+                      color: pinkDark,
+                      size: 38,
+                    ),
+                  ),
+                ],
               ),
             ),
-          ),
-        ],
+            const SizedBox(height: 22),
+            Container(
+              padding: const EdgeInsets.all(17),
+              decoration: BoxDecoration(
+                color: const Color(0xFFFFF3F2),
+                borderRadius: BorderRadius.circular(22),
+                border: Border.all(color: pinkLight),
+              ),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  const Row(
+                    children: [
+                      Icon(
+                        Icons.currency_exchange_rounded,
+                        color: pinkDark,
+                        size: 21,
+                      ),
+                      SizedBox(width: 9),
+                      Text(
+                        'Referensi Kurs',
+                        style: TextStyle(
+                          color: textDark,
+                          fontSize: 14,
+                          fontWeight: FontWeight.w800,
+                        ),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 13),
+                  FutureBuilder<Map<String, double>>(
+                    future: fetchRates(),
+                    builder: (context, snapshot) {
+                      if (snapshot.connectionState ==
+                          ConnectionState.waiting) {
+                        return const LinearProgressIndicator(color: pink);
+                      }
+
+                      if (snapshot.hasError) {
+                        return const Text(
+                          'Data kurs belum tersedia.',
+                          style: TextStyle(
+                            color: textMuted,
+                            fontSize: 12,
+                          ),
+                        );
+                      }
+
+                      final rates = snapshot.data;
+                      final numericPrice = price is num
+                          ? price.toDouble()
+                          : double.tryParse(price?.toString() ?? '');
+
+                      if (rates == null ||
+                          rates.isEmpty ||
+                          numericPrice == null) {
+                        return const Text(
+                          'Data kurs belum tersedia.',
+                          style: TextStyle(
+                            color: textMuted,
+                            fontSize: 12,
+                          ),
+                        );
+                      }
+
+                      return Wrap(
+                        spacing: 12,
+                        runSpacing: 9,
+                        children: rates.entries.map((entry) {
+                          return Container(
+                            padding: const EdgeInsets.symmetric(
+                              horizontal: 11,
+                              vertical: 8,
+                            ),
+                            decoration: BoxDecoration(
+                              color: Colors.white,
+                              borderRadius: BorderRadius.circular(12),
+                            ),
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Text(
+                                  entry.key,
+                                  style: const TextStyle(
+                                    color: textMuted,
+                                    fontSize: 10,
+                                  ),
+                                ),
+                                const SizedBox(height: 3),
+                                Text(
+                                  (numericPrice * entry.value)
+                                      .toStringAsFixed(2),
+                                  style: const TextStyle(
+                                    color: pinkDark,
+                                    fontSize: 12,
+                                    fontWeight: FontWeight.w800,
+                                  ),
+                                ),
+                              ],
+                            ),
+                          );
+                        }).toList(),
+                      );
+                    },
+                  ),
+                ],
+              ),
+            ),
+            const SizedBox(height: 26),
+            SizedBox(
+              height: 58,
+              child: FilledButton(
+                style: FilledButton.styleFrom(
+                  backgroundColor: pink,
+                  foregroundColor: Colors.white,
+                  elevation: 2,
+                  shadowColor: pink.withValues(alpha: 0.22),
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(30),
+                  ),
+                ),
+                onPressed: () {
+                  Navigator.push(
+                    context,
+                    MaterialPageRoute(
+                      builder: (_) => BookingScreen(t),
+                    ),
+                  );
+                },
+                child: const Row(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    Text(
+                      'Pilih & Booking',
+                      style: TextStyle(
+                        fontSize: 15,
+                        fontWeight: FontWeight.w800,
+                      ),
+                    ),
+                    SizedBox(width: 10),
+                    Icon(Icons.arrow_forward_rounded, size: 20),
+                  ],
+                ),
+              ),
+            ),
+          ],
+        ),
       ),
     );
   }
+}
+
+// ==================== ITEM MANFAAT TREATMENT ====================
+
+class _TreatmentBenefit extends StatelessWidget {
+  final IconData icon;
+  final String label;
+
+  const _TreatmentBenefit({
+    required this.icon,
+    required this.label,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Column(
+      children: [
+        Container(
+          width: 45,
+          height: 45,
+          decoration: const BoxDecoration(
+            color: Color(0xFFF5DDE2),
+            shape: BoxShape.circle,
+          ),
+          child: Icon(icon, color: pinkDark, size: 23),
+        ),
+        const SizedBox(height: 9),
+        Text(
+          label,
+          textAlign: TextAlign.center,
+          style: const TextStyle(
+            color: textDark,
+            fontSize: 10,
+            height: 1.4,
+            fontWeight: FontWeight.w600,
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+// ==================== FORMAT HARGA ====================
+
+String _formatPrice(dynamic value) {
+  final number = value is num
+      ? value.toInt()
+      : int.tryParse(value?.toString() ?? '');
+
+  if (number == null) return '-';
+
+  final digits = number.toString();
+  final buffer = StringBuffer();
+
+  for (var i = 0; i < digits.length; i++) {
+    buffer.write(digits[i]);
+    final remaining = digits.length - i - 1;
+
+    if (remaining > 0 && remaining % 3 == 0) {
+      buffer.write('.');
+    }
+  }
+
+  return buffer.toString();
 }

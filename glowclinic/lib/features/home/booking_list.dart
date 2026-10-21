@@ -673,6 +673,21 @@ class _BookingListState extends State<BookingList> {
                             avatar: const Icon(Icons.payments_outlined, size: 16),
                             label: Text(payLabel(booking['status_bayar']?.toString())),
                           ),
+                          Chip(
+                            avatar: const Icon(Icons.local_offer_outlined, size: 16),
+                            label: Text(
+                              () {
+                                final currency = booking['mata_uang']?.toString() ?? 'IDR';
+                                final rate = (booking['kurs'] as num?)?.toDouble() ?? CurrencyService.getRate(currency);
+                                final totalIdr = (booking['total_idr'] as num?)?.toInt() ?? 0;
+                                final totalBayar = (booking['total_bayar'] as num?)?.toDouble() ??
+                                    CurrencyService.convertFromIdr(totalIdr, currency, customRate: rate);
+                                final formatted = CurrencyService.formatMoney(totalBayar, currency);
+                                if (currency == 'IDR') return formatted;
+                                return '$formatted (Rp ${CurrencyService.formatAmount(totalIdr, 'IDR')})';
+                              }(),
+                            ),
+                          ),
                           if (booking['catatan_dokter'] != null &&
                               booking['catatan_dokter']
                                   .toString()

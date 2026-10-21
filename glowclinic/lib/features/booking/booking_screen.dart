@@ -32,10 +32,12 @@ class _BookingScreenState extends State<BookingScreen> {
   bool saving = false;
   String? branchError;
   String? doctorError;
+  late String selectedCurrency;
 
   @override
   void initState() {
     super.initState();
+    selectedCurrency = CurrencyService.activeCurrency.value;
     loadBranches();
   }
 
@@ -220,6 +222,14 @@ class _BookingScreenState extends State<BookingScreen> {
     var bookingSaved = false;
 
     try {
+      final priceIdr = (widget.t['harga_idr'] as num?)?.toInt() ?? 0;
+      final rate = CurrencyService.getRate(selectedCurrency);
+      final totalBayar = CurrencyService.convertFromIdr(
+        priceIdr,
+        selectedCurrency,
+        customRate: rate,
+      );
+
       final id = await db.insert('bookings', {
         'user_id': myId,
         'doctor_id': doc!['id'],
@@ -227,7 +237,10 @@ class _BookingScreenState extends State<BookingScreen> {
         'treatment_id': widget.t['id'],
         'treatment_nama': widget.t['nama']?.toString(),
         'waktu_utc': utc.toIso8601String(),
-        'total_idr': widget.t['harga_idr'],
+        'total_idr': priceIdr,
+        'mata_uang': selectedCurrency,
+        'kurs': rate,
+        'total_bayar': totalBayar,
       });
 
       bookingSaved = true;
@@ -237,17 +250,27 @@ class _BookingScreenState extends State<BookingScreen> {
         final me = await qry('select nama from users where id = ?', [myId]);
         final who = me.isEmpty ? 'Pasien' : '${me.first['nama']}';
 
+        final displayPrice = CurrencyService.formatMoney(
+          totalBayar,
+          selectedCurrency,
+        );
+        final priceSummary = selectedCurrency == 'IDR'
+            ? 'Rp ${CurrencyService.formatAmount(priceIdr, 'IDR')}'
+            : '$displayPrice (Rp ${CurrencyService.formatAmount(priceIdr, 'IDR')})';
+
         await pushNotif(
           toStaff: true,
           judul: 'Booking baru 📅',
-          isi: '$who memesan ${widget.t['nama']} pada '
+          isi: '$who memesan ${widget.t['nama']} seharga $priceSummary pada '
               '${fmtDateTime(utc.toIso8601String())}. Segera Acc atau Tolak.',
           tipe: 'booking',
           bookingId: id,
         );
       } catch (_) {}
 
-      await Chain.add('booking:$id:$myId:${utc.toIso8601String()}');
+      await Chain.add(
+        'booking:$id:$myId:$selectedCurrency:$totalBayar:$priceIdr:${utc.toIso8601String()}',
+      );
 
       if (!mounted) return;
 
@@ -347,7 +370,9 @@ class _BookingScreenState extends State<BookingScreen> {
         widget.t['deskripsi']?.toString() ?? '';
     final duration =
         widget.t['durasi_menit']?.toString() ?? '-';
-    final price = formatPrice(widget.t['harga_idr']);
+    final priceIdr = (widget.t['harga_idr'] as num?)?.toInt() ?? 0;
+    final totalBayar = CurrencyService.convertFromIdr(priceIdr, selectedCurrency);
+    final formattedPrice = CurrencyService.formatMoney(totalBayar, selectedCurrency);
     final photo = widget.t['foto_url']?.toString().trim() ?? '';
 
     final canSubmit = branch != null &&
@@ -517,13 +542,24 @@ class _BookingScreenState extends State<BookingScreen> {
                         ),
                         const SizedBox(height: 8),
                         Text(
-                          'Rp $price',
+                          formattedPrice,
                           style: const TextStyle(
                             color: bookingPink,
                             fontSize: 16,
                             fontWeight: FontWeight.w900,
                           ),
                         ),
+                        if (selectedCurrency != 'IDR') ...[
+                          const SizedBox(height: 2),
+                          Text(
+                            'Rp ${CurrencyService.formatAmount(priceIdr, 'IDR')}',
+                            style: const TextStyle(
+                              color: bookingMuted,
+                              fontSize: 11,
+                              fontWeight: FontWeight.w600,
+                            ),
+                          ),
+                        ],
                       ],
                     ),
                   ),
@@ -925,29 +961,67 @@ class _BookingScreenState extends State<BookingScreen> {
                         : '${when!.day}/${when!.month}/${when!.year}'
                             ' • ${formatTime(when!)}',
                   ),
+                  const SizedBox(height: 12),
+                  _currencySelectorRow(),
+                  if (selectedCurrency != 'IDR') ...[
+                    const SizedBox(height: 10),
+                    _summaryRow(
+                      'Kurs Konversi',
+                      CurrencyService.formatRateDescription(selectedCurrency),
+                    ),
+                  ],
                   const Padding(
                     padding: EdgeInsets.symmetric(vertical: 15),
                     child: Divider(color: Colors.white, height: 1),
                   ),
                   Row(
                     children: [
-                      const Expanded(
-                        child: Text(
-                          'Total perawatan',
-                          style: TextStyle(
-                            color: bookingText,
-                            fontWeight: FontWeight.w800,
-                            fontSize: 13,
-                          ),
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            const Text(
+                              'Total perawatan',
+                              style: TextStyle(
+                                color: bookingText,
+                                fontWeight: FontWeight.w800,
+                                fontSize: 13,
+                              ),
+                            ),
+                            if (selectedCurrency != 'IDR') ...[
+                              const SizedBox(height: 2),
+                              Text(
+                                'Dasar QRIS: Rp ${CurrencyService.formatAmount(priceIdr, 'IDR')}',
+                                style: const TextStyle(
+                                  color: bookingMuted,
+                                  fontSize: 10,
+                                ),
+                              ),
+                            ],
+                          ],
                         ),
                       ),
-                      Text(
-                        'Rp $price',
-                        style: const TextStyle(
-                          color: bookingPink,
-                          fontSize: 19,
-                          fontWeight: FontWeight.w900,
-                        ),
+                      Column(
+                        crossAxisAlignment: CrossAxisAlignment.end,
+                        children: [
+                          Text(
+                            formattedPrice,
+                            style: const TextStyle(
+                              color: bookingPink,
+                              fontSize: 19,
+                              fontWeight: FontWeight.w900,
+                            ),
+                          ),
+                          if (selectedCurrency != 'IDR')
+                            Text(
+                              'Rp ${CurrencyService.formatAmount(priceIdr, 'IDR')}',
+                              style: const TextStyle(
+                                color: bookingMuted,
+                                fontSize: 11,
+                                fontWeight: FontWeight.w700,
+                              ),
+                            ),
+                        ],
                       ),
                     ],
                   ),
@@ -1086,6 +1160,54 @@ class _BookingScreenState extends State<BookingScreen> {
               fontWeight: FontWeight.w700,
             ),
           ),
+        ),
+      ],
+    );
+  }
+
+  Widget _currencySelectorRow() {
+    return Row(
+      crossAxisAlignment: CrossAxisAlignment.center,
+      children: [
+        const Expanded(
+          child: Text(
+            'Mata uang',
+            style: TextStyle(
+              color: bookingMuted,
+              fontSize: 12,
+            ),
+          ),
+        ),
+        Wrap(
+          spacing: 6,
+          children: supportedCurrencies.keys.map((curr) {
+            final isSelected = curr == selectedCurrency;
+            return ChoiceChip(
+              label: Text(
+                curr,
+                style: TextStyle(
+                  fontSize: 11,
+                  fontWeight: isSelected ? FontWeight.bold : FontWeight.w500,
+                  color: isSelected ? Colors.white : bookingText,
+                ),
+              ),
+              selected: isSelected,
+              selectedColor: bookingPink,
+              backgroundColor: Colors.white,
+              visualDensity: VisualDensity.compact,
+              padding: const EdgeInsets.symmetric(horizontal: 4),
+              onSelected: saving
+                  ? null
+                  : (selected) {
+                      if (selected) {
+                        setState(() {
+                          selectedCurrency = curr;
+                        });
+                        CurrencyService.setCurrency(curr);
+                      }
+                    },
+            );
+          }).toList(),
         ),
       ],
     );

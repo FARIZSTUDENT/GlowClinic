@@ -7,6 +7,8 @@ import 'package:flutter/material.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:path/path.dart' as pth;
 import 'package:sqflite/sqflite.dart';
+export 'currency.dart';
+import 'package:glowclinic/core/currency.dart';
 
 late Database db;
 const store = FlutterSecureStorage();
@@ -78,7 +80,7 @@ const _schema = [
 
   "create table treatments(id integer primary key autoincrement, nama text, kategori text, deskripsi text, durasi_menit integer, harga_idr integer)",
 
-  "create table bookings(id integer primary key autoincrement, user_id integer, doctor_id integer, branch_id integer, treatment_id integer, treatment_nama text, waktu_utc text, status text default 'pending', status_bayar text default 'belum_bayar', metode_bayar text, kode_bayar text, total_idr integer, catatan_dokter text, spin_hadiah text, created_at text default current_timestamp)",
+  "create table bookings(id integer primary key autoincrement, user_id integer, doctor_id integer, branch_id integer, treatment_id integer, treatment_nama text, waktu_utc text, status text default 'pending', status_bayar text default 'belum_bayar', metode_bayar text, kode_bayar text, total_idr integer, mata_uang text default 'IDR', kurs real default 1.0, total_bayar real, catatan_dokter text, spin_hadiah text, created_at text default current_timestamp)",
 
   "create table record_photos(id integer primary key autoincrement, booking_id integer, tipe text, photo_path text, lux real, created_at text default current_timestamp)",
 
@@ -289,7 +291,7 @@ Future<void> initDb() async {
 
   db = await openDatabase(
     path,
-    version: 4,
+    version: 5,
     onCreate: (database, version) async {
       for (final sql in _schema) {
         await database.execute(sql);
@@ -329,8 +331,28 @@ Future<void> initDb() async {
           'shown integer default 0, waktu_utc text)',
         );
       }
+      if (oldVersion < 5) {
+        try {
+          await database.execute(
+            'ALTER TABLE bookings ADD COLUMN mata_uang TEXT DEFAULT "IDR"',
+          );
+        } catch (_) {}
+        try {
+          await database.execute(
+            'ALTER TABLE bookings ADD COLUMN kurs REAL DEFAULT 1.0',
+          );
+        } catch (_) {}
+        try {
+          await database.execute(
+            'ALTER TABLE bookings ADD COLUMN total_bayar REAL',
+          );
+        } catch (_) {}
+      }
     },
   );
+
+  // Inisialisasi pengaturan mata uang dan kurs
+  await CurrencyService.init();
 
 
   // Cabang demo dengan koordinat agar marker peta bisa dipilih.

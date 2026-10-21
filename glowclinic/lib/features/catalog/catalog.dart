@@ -591,15 +591,24 @@ class _TreatmentCarouselState extends State<TreatmentCarousel> {
                                   style: _heading(13),
                                 ),
                                 const Spacer(),
-                                Text(
-                                  'Rp ${_formatPrice(t['harga_idr'])}',
-                                  maxLines: 1,
-                                  overflow: TextOverflow.ellipsis,
-                                  style: const TextStyle(
-                                    color: pinkDark,
-                                    fontSize: 13,
-                                    fontWeight: FontWeight.w900,
-                                  ),
+                                ValueListenableBuilder<String>(
+                                  valueListenable: CurrencyService.activeCurrency,
+                                  builder: (context, activeCurr, _) {
+                                    final priceIdr = (t['harga_idr'] as num?)?.toInt() ?? 0;
+                                    return Text(
+                                      CurrencyService.formatConverted(
+                                        priceIdr,
+                                        targetCurrency: activeCurr,
+                                      ),
+                                      maxLines: 1,
+                                      overflow: TextOverflow.ellipsis,
+                                      style: const TextStyle(
+                                        color: pinkDark,
+                                        fontSize: 13,
+                                        fontWeight: FontWeight.w900,
+                                      ),
+                                    );
+                                  },
                                 ),
                                 const SizedBox(height: 8),
                                 const Row(
@@ -808,13 +817,22 @@ class _AllTreatmentsPageState extends State<AllTreatmentsPage> {
                                             style: _heading(14),
                                           ),
                                           const SizedBox(height: 9),
-                                          Text(
-                                            'Rp ${_formatPrice(t['harga_idr'])}',
-                                            style: const TextStyle(
-                                              color: pinkDark,
-                                              fontSize: 13,
-                                              fontWeight: FontWeight.w900,
-                                            ),
+                                          ValueListenableBuilder<String>(
+                                            valueListenable: CurrencyService.activeCurrency,
+                                            builder: (context, activeCurr, _) {
+                                              final priceIdr = (t['harga_idr'] as num?)?.toInt() ?? 0;
+                                              return Text(
+                                                CurrencyService.formatConverted(
+                                                  priceIdr,
+                                                  targetCurrency: activeCurr,
+                                                ),
+                                                style: const TextStyle(
+                                                  color: pinkDark,
+                                                  fontSize: 13,
+                                                  fontWeight: FontWeight.w900,
+                                                ),
+                                              );
+                                            },
                                           ),
                                         ],
                                       ),
@@ -1940,13 +1958,39 @@ class Detail extends StatelessWidget {
                           ),
                         ),
                         const SizedBox(height: 8),
-                        Text(
-                          'Rp ${_formatPrice(price)}',
-                          style: const TextStyle(
-                            color: pinkDark,
-                            fontSize: 25,
-                            fontWeight: FontWeight.w900,
-                          ),
+                        ValueListenableBuilder<String>(
+                          valueListenable: CurrencyService.activeCurrency,
+                          builder: (context, activeCurr, _) {
+                            final priceIdr = (price as num?)?.toInt() ?? 0;
+                            final converted = CurrencyService.formatConverted(
+                              priceIdr,
+                              targetCurrency: activeCurr,
+                            );
+                            return Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Text(
+                                  converted,
+                                  style: const TextStyle(
+                                    color: pinkDark,
+                                    fontSize: 25,
+                                    fontWeight: FontWeight.w900,
+                                  ),
+                                ),
+                                if (activeCurr != 'IDR') ...[
+                                  const SizedBox(height: 3),
+                                  Text(
+                                    'Dasar: Rp ${_formatPrice(priceIdr)}',
+                                    style: const TextStyle(
+                                      color: textMuted,
+                                      fontSize: 12,
+                                      fontWeight: FontWeight.w600,
+                                    ),
+                                  ),
+                                ],
+                              ],
+                            );
+                          },
                         ),
                         const SizedBox(height: 13),
                         Row(
@@ -2024,26 +2068,14 @@ class Detail extends StatelessWidget {
                         return const LinearProgressIndicator(color: pink);
                       }
 
-                      if (snapshot.hasError) {
-                        return const Text(
-                          'Data kurs belum tersedia.',
-                          style: TextStyle(
-                            color: textMuted,
-                            fontSize: 12,
-                          ),
-                        );
-                      }
-
-                      final rates = snapshot.data;
+                      final rates = snapshot.data ?? CurrencyService.currentRates;
                       final numericPrice = price is num
                           ? price.toDouble()
                           : double.tryParse(price?.toString() ?? '');
 
-                      if (rates == null ||
-                          rates.isEmpty ||
-                          numericPrice == null) {
+                      if (numericPrice == null) {
                         return const Text(
-                          'Data kurs belum tersedia.',
+                          'Data harga tidak valid.',
                           style: TextStyle(
                             color: textMuted,
                             fontSize: 12,
@@ -2051,44 +2083,86 @@ class Detail extends StatelessWidget {
                         );
                       }
 
-                      return Wrap(
-                        spacing: 9,
-                        runSpacing: 9,
-                        children: rates.entries.map((entry) {
-                          return Container(
-                            padding: const EdgeInsets.symmetric(
-                              horizontal: 11,
-                              vertical: 9,
-                            ),
-                            decoration: BoxDecoration(
-                              color: Colors.white,
-                              borderRadius: BorderRadius.circular(13),
-                              border: Border.all(color: pinkLight),
-                            ),
-                            child: Column(
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              children: [
-                                Text(
-                                  entry.key,
-                                  style: const TextStyle(
-                                    color: textMuted,
-                                    fontSize: 10,
+                      return ValueListenableBuilder<String>(
+                        valueListenable: CurrencyService.activeCurrency,
+                        builder: (context, activeCurr, _) {
+                          final allCurrs = supportedCurrencies.keys;
+                          return Wrap(
+                            spacing: 9,
+                            runSpacing: 9,
+                            children: allCurrs.map((code) {
+                              final isSelected = code == activeCurr;
+                              final rate = rates[code] ?? CurrencyService.getRate(code);
+                              final converted = CurrencyService.convertFromIdr(
+                                numericPrice,
+                                code,
+                                customRate: rate,
+                              );
+                              final formatted = CurrencyService.formatMoney(
+                                converted,
+                                code,
+                              );
+
+                              return InkWell(
+                                onTap: () => CurrencyService.setCurrency(code),
+                                borderRadius: BorderRadius.circular(13),
+                                child: Container(
+                                  padding: const EdgeInsets.symmetric(
+                                    horizontal: 11,
+                                    vertical: 9,
+                                  ),
+                                  decoration: BoxDecoration(
+                                    color: isSelected
+                                        ? const Color(0xFFFBF4F6)
+                                        : Colors.white,
+                                    borderRadius: BorderRadius.circular(13),
+                                    border: Border.all(
+                                      color: isSelected ? pinkDark : pinkLight,
+                                      width: isSelected ? 1.6 : 1,
+                                    ),
+                                  ),
+                                  child: Column(
+                                    crossAxisAlignment: CrossAxisAlignment.start,
+                                    children: [
+                                      Row(
+                                        mainAxisSize: MainAxisSize.min,
+                                        children: [
+                                          Text(
+                                            code,
+                                            style: TextStyle(
+                                              color: isSelected ? pinkDark : textMuted,
+                                              fontSize: 10,
+                                              fontWeight: isSelected
+                                                  ? FontWeight.bold
+                                                  : FontWeight.normal,
+                                            ),
+                                          ),
+                                          if (isSelected) ...[
+                                            const SizedBox(width: 4),
+                                            const Icon(
+                                              Icons.check_circle_rounded,
+                                              size: 11,
+                                              color: pinkDark,
+                                            ),
+                                          ],
+                                        ],
+                                      ),
+                                      const SizedBox(height: 4),
+                                      Text(
+                                        formatted,
+                                        style: TextStyle(
+                                          color: isSelected ? pinkDark : textDark,
+                                          fontSize: 12,
+                                          fontWeight: FontWeight.w800,
+                                        ),
+                                      ),
+                                    ],
                                   ),
                                 ),
-                                const SizedBox(height: 4),
-                                Text(
-                                  (numericPrice * entry.value)
-                                      .toStringAsFixed(2),
-                                  style: const TextStyle(
-                                    color: pinkDark,
-                                    fontSize: 12,
-                                    fontWeight: FontWeight.w800,
-                                  ),
-                                ),
-                              ],
-                            ),
+                              );
+                            }).toList(),
                           );
-                        }).toList(),
+                        },
                       );
                     },
                   ),

@@ -27,7 +27,40 @@ class _CS extends State<ChatScreen> {
   @override
   void initState() {
     super.initState();
-    loadServices();
+    loadServices().then((_) => addGreeting());
+  }
+
+  String _timeGreeting() {
+    final h = DateTime.now().hour;
+    if (h < 11) return 'Selamat pagi';
+    if (h < 15) return 'Selamat siang';
+    if (h < 18) return 'Selamat sore';
+    return 'Selamat malam';
+  }
+
+  /// Sapaan pertama dari GlowBot (tidak dikirim ke API Gemini).
+  Future<void> addGreeting() async {
+    String name = '';
+
+    try {
+      final r = await qry('SELECT nama FROM users WHERE id = ?', [myId]);
+      if (r.isNotEmpty) {
+        name = (r.first['nama'] ?? '').toString().trim();
+      }
+    } catch (_) {}
+
+    if (!mounted || chatMsgs.isNotEmpty) return;
+
+    setState(() {
+      chatMsgs.add({
+        'role': 'model',
+        'greeting': '1',
+        'text': '${_timeGreeting()}${name.isEmpty ? '' : ', $name'}! 👋\n'
+            'Aku GlowBot, asisten virtual GlowClinic. Aku bisa bantu soal '
+            'pilihan layanan, persiapan sebelum treatment, dan perawatan '
+            'setelahnya.\n\nAda yang ingin kamu tanyakan hari ini?',
+      });
+    });
   }
 
   Future<void> loadServices() async {
@@ -64,6 +97,56 @@ class _CS extends State<ChatScreen> {
         curve: Curves.easeOut,
       );
     });
+  }
+
+  bool _thinkingOk = true;
+
+  /// Memanggil Gemini. Token thinking ikut dihitung dalam maxOutputTokens,
+  /// jadi thinking dibuat minimal (tercepat) dan batas token dibuat longgar.
+  Future<http.Response> _call() {
+    final uri = Uri.parse(
+      'https://generativelanguage.googleapis.com/'
+      'v1beta/models/$kModel:generateContent?key=$kGemini',
+    );
+
+    return http
+        .post(
+          uri,
+          headers: {'Content-Type': 'application/json'},
+          body: jsonEncode({
+            'system_instruction': {
+              'parts': [
+                {
+                  'text':
+                      'Kamu GlowBot, asisten virtual klinik kecantikan '
+                      'GlowClinic. Jawab singkat dan ramah dalam bahasa '
+                      'Indonesia seputar layanan, persiapan, dan perawatan '
+                      'setelah treatment. Jangan mendiagnosis penyakit atau '
+                      'menggantikan dokter. Untuk keluhan medis, sarankan '
+                      'konsultasi dengan dokter. Jangan mengarang layanan '
+                      'atau harga. Layanan klinik yang tersedia: '
+                      '${ctx.isEmpty ? 'Data layanan belum tersedia.' : ctx}.',
+                },
+              ],
+            },
+            'contents': [
+              for (final message
+                  in chatMsgs.where((m) => m['greeting'] != '1'))
+                {
+                  'role': message['role'],
+                  'parts': [
+                    {'text': message['text']},
+                  ],
+                },
+            ],
+            'generationConfig': {
+              'temperature': 0.7,
+              'maxOutputTokens': 2048,
+              if (_thinkingOk) 'thinkingConfig': {'thinkingLevel': 'minimal'},
+            },
+          }),
+        )
+        .timeout(const Duration(seconds: 40));
   }
 
   Future<void> send() async {
@@ -106,51 +189,21 @@ class _CS extends State<ChatScreen> {
     }
 
     try {
-      final uri = Uri.parse(
-        'https://generativelanguage.googleapis.com/'
-        'v1beta/models/$kModel:generateContent?key=$kGemini',
-      );
+      var response = await _call();
 
-      final response = await http
-          .post(
-            uri,
-            headers: {
-              'Content-Type': 'application/json',
-            },
-            body: jsonEncode({
-              'system_instruction': {
-                'parts': [
-                  {
-                    'text':
-                        'Kamu GlowBot, asisten virtual klinik kecantikan '
-                        'GlowClinic. Jawab singkat dan ramah dalam bahasa '
-                        'Indonesia seputar layanan, persiapan, dan perawatan '
-                        'setelah treatment. Jangan mendiagnosis penyakit atau '
-                        'menggantikan dokter. Untuk keluhan medis, sarankan '
-                        'konsultasi dengan dokter. Jangan mengarang layanan '
-                        'atau harga. Layanan klinik yang tersedia: '
-                        '${ctx.isEmpty ? 'Data layanan belum tersedia.' : ctx}.',
-                  },
-                ],
-              },
-              'contents': [
-                for (final message in chatMsgs)
-                  {
-                    'role': message['role'],
-                    'parts': [
-                      {
-                        'text': message['text'],
-                      },
-                    ],
-                  },
-              ],
-              'generationConfig': {
-                'temperature': 0.7,
-                'maxOutputTokens': 500,
-              },
-            }),
-          )
-          .timeout(const Duration(seconds: 30));
+      // Jika konfigurasi thinking ditolak, ulangi tanpa thinkingConfig.
+      if (response.statusCode == 400 &&
+          _thinkingOk &&
+          response.body.toLowerCase().contains('thinking')) {
+        _thinkingOk = false;
+        response = await _call();
+      }
+
+      // Server sibuk / kuota sesaat: coba sekali lagi.
+      if (response.statusCode == 503 || response.statusCode == 429) {
+        await Future.delayed(const Duration(seconds: 2));
+        response = await _call();
+      }
 
       if (response.statusCode != 200) {
         // Menampilkan error asli Gemini di terminal VS Code.
@@ -278,46 +331,12 @@ class _CS extends State<ChatScreen> {
             controller: scroll,
             padding: const EdgeInsets.all(12),
             children: [
-              if (chatMsgs.isEmpty)
-                Padding(
-                  padding: const EdgeInsets.symmetric(
-                    vertical: 12,
-                  ),
-                  child: Text(
-                    loadingServices
-                        ? 'Halo! Aku GlowBot. '
-                            'Sedang memuat informasi layanan...'
-                        : 'Halo! Aku GlowBot. Tanya soal persiapan '
-                            'atau perawatan setelah treatment.',
-                  ),
-                ),
               for (final message in chatMsgs)
-                Align(
-                  alignment: message['role'] == 'user'
-                      ? Alignment.centerRight
-                      : Alignment.centerLeft,
-                  child: Card(
-                    color: message['role'] == 'user'
-                        ? Colors.pink.shade100
-                        : null,
-                    child: Padding(
-                      padding: const EdgeInsets.all(10),
-                      child: ConstrainedBox(
-                        constraints: const BoxConstraints(
-                          maxWidth: 300,
-                        ),
-                        child: SelectableText(
-                          message['text'] ?? '',
-                        ),
-                      ),
-                    ),
-                  ),
+                _Bubble(
+                  text: message['text'] ?? '',
+                  mine: message['role'] == 'user',
                 ),
-              if (busy)
-                const Padding(
-                  padding: EdgeInsets.all(8),
-                  child: LinearProgressIndicator(),
-                ),
+              if (busy) const _TypingBubble(),
             ],
           ),
         ),
@@ -362,6 +381,128 @@ class _CS extends State<ChatScreen> {
           ),
         ),
       ],
+    );
+  }
+}
+
+/// Gelembung chat gaya WhatsApp.
+class _Bubble extends StatelessWidget {
+  const _Bubble({required this.text, required this.mine});
+
+  final String text;
+  final bool mine;
+
+  @override
+  Widget build(BuildContext context) {
+    return Align(
+      alignment: mine ? Alignment.centerRight : Alignment.centerLeft,
+      child: Container(
+        margin: const EdgeInsets.symmetric(vertical: 3),
+        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 9),
+        constraints: BoxConstraints(
+          maxWidth: MediaQuery.of(context).size.width * 0.78,
+        ),
+        decoration: BoxDecoration(
+          color: mine ? const Color(0xFFFFD6E3) : Colors.white,
+          borderRadius: BorderRadius.only(
+            topLeft: const Radius.circular(16),
+            topRight: const Radius.circular(16),
+            bottomLeft: Radius.circular(mine ? 16 : 4),
+            bottomRight: Radius.circular(mine ? 4 : 16),
+          ),
+          boxShadow: const [
+            BoxShadow(
+              color: Color(0x14000000),
+              blurRadius: 3,
+              offset: Offset(0, 1),
+            ),
+          ],
+        ),
+        child: SelectableText(text),
+      ),
+    );
+  }
+}
+
+/// Tiga titik berdenyut saat menunggu balasan (seperti "sedang mengetik" di WA).
+class _TypingBubble extends StatefulWidget {
+  const _TypingBubble();
+
+  @override
+  State<_TypingBubble> createState() => _TypingBubbleState();
+}
+
+class _TypingBubbleState extends State<_TypingBubble>
+    with SingleTickerProviderStateMixin {
+  late final AnimationController _c = AnimationController(
+    vsync: this,
+    duration: const Duration(milliseconds: 1100),
+  )..repeat();
+
+  @override
+  void dispose() {
+    _c.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Align(
+      alignment: Alignment.centerLeft,
+      child: Container(
+        margin: const EdgeInsets.symmetric(vertical: 3),
+        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+        decoration: const BoxDecoration(
+          color: Colors.white,
+          borderRadius: BorderRadius.only(
+            topLeft: Radius.circular(16),
+            topRight: Radius.circular(16),
+            bottomLeft: Radius.circular(4),
+            bottomRight: Radius.circular(16),
+          ),
+          boxShadow: [
+            BoxShadow(
+              color: Color(0x14000000),
+              blurRadius: 3,
+              offset: Offset(0, 1),
+            ),
+          ],
+        ),
+        child: AnimatedBuilder(
+          animation: _c,
+          builder: (context, _) {
+            return Row(
+              mainAxisSize: MainAxisSize.min,
+              children: List.generate(3, (i) {
+                // Tiap titik bergeser fase agar menyala bergantian (kiri ke kanan).
+                final t = (_c.value - i * 0.18) % 1.0;
+
+                // 0 -> 1 -> 0 dalam separuh siklus, lalu istirahat.
+                final double wave =
+                    t < 0.5 ? (1 - (t * 4 - 1).abs()).clamp(0.0, 1.0).toDouble() : 0.0;
+
+                return Padding(
+                  padding: EdgeInsets.only(right: i < 2 ? 4 : 0),
+                  child: Transform.translate(
+                    offset: Offset(0, -3 * wave),
+                    child: Opacity(
+                      opacity: 0.35 + 0.65 * wave,
+                      child: Container(
+                        width: 8,
+                        height: 8,
+                        decoration: const BoxDecoration(
+                          shape: BoxShape.circle,
+                          color: Color(0xFF8696A0),
+                        ),
+                      ),
+                    ),
+                  ),
+                );
+              }),
+            );
+          },
+        ),
+      ),
     );
   }
 }

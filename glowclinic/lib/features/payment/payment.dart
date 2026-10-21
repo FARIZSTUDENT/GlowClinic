@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:qr_flutter/qr_flutter.dart';
 import 'package:glowclinic/core/core.dart';
 import 'package:glowclinic/features/blockchain/chain.dart';
+import 'package:glowclinic/features/notif/inbox.dart';
 
 /// Pasien: buat kode QR pembayaran simulasi.
 Future<void> payQris(BuildContext c, Map b) async {
@@ -10,8 +11,18 @@ Future<void> payQris(BuildContext c, Map b) async {
     return;
   }
 
-  if (b['status'] == 'rejected') {
-    snack(c, 'Booking ditolak dan tidak dapat dibayar');
+  if (b['status'] == 'rejected' || b['status'] == 'cancelled') {
+    snack(c, 'Booking ditolak/dibatalkan dan tidak dapat dibayar');
+    return;
+  }
+
+  if (b['status'] != 'checked_in') {
+    snack(
+      c,
+      b['status'] == 'done'
+          ? 'Booking ini sudah selesai.'
+          : 'Pembayaran dibuka setelah kamu check-in di klinik.',
+    );
     return;
   }
 
@@ -37,6 +48,15 @@ Future<void> payQris(BuildContext c, Map b) async {
       }
       return;
     }
+
+    await pushNotif(
+      toStaff: true,
+      judul: 'Pembayaran masuk 💸',
+      isi: '${b['u_nama'] ?? 'Pasien'} membayar ${b['t_nama'] ?? 'treatment'} '
+          '(Rp ${b['total_idr']}) via QRIS. Mohon verifikasi.',
+      tipe: 'bayar',
+      bookingId: b['id'] as int?,
+    );
   }
 
   if (!c.mounted) return;
@@ -53,7 +73,9 @@ Future<void> confirmPaid(BuildContext c, Map b) async {
 
   if (!c.mounted) return;
 
-  if (me.isEmpty || me.first['role'] != 'staf') {
+  final role = me.isEmpty ? '' : '${me.first['role']}'.trim().toLowerCase();
+
+  if (!['staf', 'staff', 'admin'].contains(role)) {
     snack(c, 'Hanya staf yang dapat mengonfirmasi pembayaran');
     return;
   }
@@ -80,6 +102,15 @@ Future<void> confirmPaid(BuildContext c, Map b) async {
   await Chain.add(
     'payment:${b['id']}:'
     '${DateTime.now().toUtc().toIso8601String()}',
+  );
+
+  await pushNotif(
+    userId: b['user_id'] as int?,
+    judul: 'Pembayaran lunas ✅',
+    isi: 'Pembayaran ${b['t_nama'] ?? 'treatment'} sudah diverifikasi. '
+        'Terima kasih!',
+    tipe: 'bayar',
+    bookingId: b['id'] as int?,
   );
 
   if (!c.mounted) return;

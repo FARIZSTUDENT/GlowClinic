@@ -9,7 +9,7 @@ Flutter demo application for clinic booking, branch map, GlowBot, local notifica
 3. Configure Gemini locally; do not commit the key:
 
    ```bash
-   flutter run --dart-define=GEMINI_KEY=YOUR_GEMINI_API_KEY
+   flutter run --dart-define-from-file=dart_defines.json
    ```
 
 4. For Android biometrics, enroll a fingerprint/face or device credential in Android settings and test on a real device. Emulator support varies.

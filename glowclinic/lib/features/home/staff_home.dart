@@ -4,6 +4,7 @@ import 'package:glowclinic/features/settings/settings.dart';
 import 'package:glowclinic/features/blockchain/chain.dart';
 import 'package:glowclinic/features/home/booking_list.dart';
 import 'package:glowclinic/features/feedback/feedback.dart';
+import 'package:glowclinic/features/notif/inbox.dart';
 
 class StaffHome extends StatefulWidget {
   const StaffHome({super.key});
@@ -13,6 +14,12 @@ class StaffHome extends StatefulWidget {
 }
 
 class _SH extends State<StaffHome> {
+  @override
+  void initState() {
+    super.initState();
+    startNotifWatcher();
+  }
+
   Future<void> verifyChain() async {
     try {
       final valid = await Chain.valid();
@@ -82,30 +89,37 @@ class _SH extends State<StaffHome> {
       appBar: AppBar(
         title: const Text('Dashboard Staf'),
         actions: [
-          IconButton(
-            icon: const Icon(Icons.rate_review),
-            tooltip: 'Ulasan pasien',
-            onPressed: () {
-              Navigator.push(
-                context,
-                MaterialPageRoute(builder: (_) => const FeedbackList()),
-              );
+          const NotifBell(),
+          PopupMenuButton<String>(
+            tooltip: 'Menu',
+            onSelected: (v) {
+              switch (v) {
+                case 'ulasan':
+                  Navigator.push(
+                    context,
+                    MaterialPageRoute(builder: (_) => const FeedbackList()),
+                  );
+                  break;
+                case 'promo':
+                  sendPromoDialog(context);
+                  break;
+                case 'chain':
+                  verifyChain();
+                  break;
+                case 'settings':
+                  Navigator.push(
+                    context,
+                    MaterialPageRoute(builder: (_) => const SettingsScreen()),
+                  );
+                  break;
+              }
             },
-          ),
-          IconButton(
-            icon: const Icon(Icons.settings),
-            tooltip: 'Pengaturan',
-            onPressed: () {
-              Navigator.push(
-                context,
-                MaterialPageRoute(builder: (_) => const SettingsScreen()),
-              );
-            },
-          ),
-          IconButton(
-            icon: const Icon(Icons.verified),
-            tooltip: 'Verifikasi blockchain',
-            onPressed: verifyChain,
+            itemBuilder: (_) => const [
+              PopupMenuItem(value: 'promo', child: Text('Kirim promo ke pasien')),
+              PopupMenuItem(value: 'ulasan', child: Text('Ulasan pasien')),
+              PopupMenuItem(value: 'chain', child: Text('Verifikasi blockchain')),
+              PopupMenuItem(value: 'settings', child: Text('Pengaturan')),
+            ],
           ),
           IconButton(
             icon: const Icon(Icons.logout),

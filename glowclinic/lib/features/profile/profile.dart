@@ -4,6 +4,8 @@ import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:glowclinic/core/core.dart';
+import 'package:glowclinic/features/auth/auth.dart';
+import 'package:glowclinic/features/settings/settings.dart';
 
 class ProfileScreen extends StatefulWidget {
   const ProfileScreen({super.key});
@@ -129,6 +131,30 @@ class _PF extends State<ProfileScreen> {
     }
   }
 
+  Future<void> confirmLogout() async {
+    final yes = await showDialog<bool>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        title: const Text('Keluar dari akun?'),
+        content: const Text('Kamu perlu login kembali untuk masuk.'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(dialogContext, false),
+            child: const Text('Batal'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(dialogContext, true),
+            child: const Text('Keluar'),
+          ),
+        ],
+      ),
+    );
+
+    if (yes == true && mounted) {
+      await logout(context);
+    }
+  }
+
   Future<void> save() async {
     if (saving) return;
 
@@ -250,6 +276,27 @@ class _PF extends State<ProfileScreen> {
                   child: CircularProgressIndicator(strokeWidth: 2),
                 )
               : const Text('Simpan'),
+        ),
+        const SizedBox(height: 24),
+        const Divider(),
+        ListTile(
+          leading: const Icon(Icons.settings_outlined),
+          title: const Text('Pengaturan'),
+          trailing: const Icon(Icons.chevron_right),
+          onTap: () {
+            Navigator.push(
+              context,
+              MaterialPageRoute(builder: (_) => const SettingsScreen()),
+            );
+          },
+        ),
+        ListTile(
+          leading: const Icon(Icons.logout_rounded, color: Color(0xFFD85F89)),
+          title: const Text(
+            'Keluar',
+            style: TextStyle(color: Color(0xFFD85F89)),
+          ),
+          onTap: confirmLogout,
         ),
       ],
     );

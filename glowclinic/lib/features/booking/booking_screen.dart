@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:glowclinic/core/core.dart';
+import 'package:glowclinic/features/notif/inbox.dart';
 import 'package:glowclinic/features/booking/zones.dart';
 import 'package:glowclinic/features/blockchain/chain.dart';
 
@@ -164,11 +165,27 @@ class _BookingScreenState extends State<BookingScreen> {
         'doctor_id': doc!['id'],
         'branch_id': doc!['branch_id'],
         'treatment_id': widget.t['id'],
+        'treatment_nama': widget.t['nama']?.toString(),
         'waktu_utc': utc.toIso8601String(),
         'total_idr': widget.t['harga_idr'],
       });
 
       bookingSaved = true;
+      bookingRefresh.value++; // daftar booking langsung memuat ulang
+
+      try {
+        final me = await qry('select nama from users where id = ?', [myId]);
+        final who = me.isEmpty ? 'Pasien' : '${me.first['nama']}';
+
+        await pushNotif(
+          toStaff: true,
+          judul: 'Booking baru 📅',
+          isi: '$who memesan ${widget.t['nama']} pada '
+              '${fmtDateTime(utc.toIso8601String())}. Segera Acc atau Tolak.',
+          tipe: 'booking',
+          bookingId: id,
+        );
+      } catch (_) {}
 
       await Chain.add('booking:$id:$myId:${utc.toIso8601String()}');
 

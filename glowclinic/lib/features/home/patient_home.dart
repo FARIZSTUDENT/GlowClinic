@@ -1,13 +1,14 @@
 
 import 'package:flutter/material.dart';
 
-import 'package:glowclinic/features/auth/auth.dart';
-import 'package:glowclinic/features/settings/settings.dart';
+import 'package:glowclinic/core/core.dart';
+
 import 'package:glowclinic/features/catalog/catalog.dart';
 import 'package:glowclinic/features/lbs/lbs.dart';
 import 'package:glowclinic/features/home/booking_list.dart';
 import 'package:glowclinic/features/bot/glowbot.dart';
 import 'package:glowclinic/features/profile/profile.dart';
+import 'package:glowclinic/features/notif/inbox.dart';
 
 class PatientHome extends StatefulWidget {
   const PatientHome({super.key});
@@ -18,6 +19,13 @@ class PatientHome extends StatefulWidget {
 
 class _PH extends State<PatientHome> {
   int i = 0;
+
+  @override
+  void initState() {
+    super.initState();
+    startNotifWatcher();
+    setupPatientPromos();
+  }
 
   static const Color background = Color(0xFFFFF7F9);
   static const Color primary = Color(0xFFE879A0);
@@ -94,44 +102,9 @@ class _PH extends State<PatientHome> {
             ),
           ],
         ),
-        actions: [
-          Container(
-            margin: const EdgeInsets.only(right: 4),
-            decoration: BoxDecoration(
-              color: lightPurple,
-              borderRadius: BorderRadius.circular(14),
-            ),
-            child: IconButton(
-              tooltip: 'Pengaturan',
-              icon: const Icon(
-                Icons.settings_outlined,
-                color: primary,
-              ),
-              onPressed: () {
-                Navigator.push(
-                  context,
-                  MaterialPageRoute(
-                    builder: (_) => const SettingsScreen(),
-                  ),
-                );
-              },
-            ),
-          ),
-          Container(
-            margin: const EdgeInsets.only(right: 16, left: 5),
-            decoration: BoxDecoration(
-              color: lightPink,
-              borderRadius: BorderRadius.circular(14),
-            ),
-            child: IconButton(
-              tooltip: 'Keluar',
-              icon: const Icon(
-                Icons.logout_rounded,
-                color: Color(0xFFD85F89),
-              ),
-              onPressed: () => logout(context),
-            ),
-          ),
+        actions: const [
+          NotifBell(),
+          SizedBox(width: 6),
         ],
       ),
       body: IndexedStack(
@@ -194,6 +167,7 @@ class _PH extends State<PatientHome> {
             onDestinationSelected: (value) {
               if (value == i) return;
               setState(() => i = value);
+              if (value == 2) bookingRefresh.value++;
             },
             destinations: destinations,
           ),

@@ -13,6 +13,17 @@ const store = FlutterSecureStorage();
 
 int? myId;
 
+/// Naikkan nilainya agar daftar booking memuat ulang data.
+final ValueNotifier<int> bookingRefresh = ValueNotifier<int>(0);
+
+/// Naikkan nilainya agar ikon/badge notifikasi memuat ulang.
+final ValueNotifier<int> notifTick = ValueNotifier<int>(0);
+
+/// Akun staf demo. Dibuat otomatis saat aplikasi pertama dijalankan.
+/// Ganti email/password ini sebelum rilis.
+const kStaffEmail = 'staf@glowclinic.com';
+const kStaffPassword = 'staf12345';
+
 String sha(String s) => sha256.convert(utf8.encode(s)).toString();
 
 String newSalt() => List.generate(
@@ -67,11 +78,13 @@ const _schema = [
 
   "create table treatments(id integer primary key autoincrement, nama text, kategori text, deskripsi text, durasi_menit integer, harga_idr integer)",
 
-  "create table bookings(id integer primary key autoincrement, user_id integer, doctor_id integer, branch_id integer, treatment_id integer, waktu_utc text, status text default 'pending', status_bayar text default 'belum_bayar', metode_bayar text, kode_bayar text, total_idr integer, catatan_dokter text, spin_hadiah text, created_at text default current_timestamp)",
+  "create table bookings(id integer primary key autoincrement, user_id integer, doctor_id integer, branch_id integer, treatment_id integer, treatment_nama text, waktu_utc text, status text default 'pending', status_bayar text default 'belum_bayar', metode_bayar text, kode_bayar text, total_idr integer, catatan_dokter text, spin_hadiah text, created_at text default current_timestamp)",
 
   "create table record_photos(id integer primary key autoincrement, booking_id integer, tipe text, photo_path text, lux real, created_at text default current_timestamp)",
 
   "create table feedback(id integer primary key autoincrement, user_id integer, booking_id integer, rating integer, kesan text, saran text, created_at text default current_timestamp)",
+
+  "create table notifications(id integer primary key autoincrement, user_id integer, judul text, isi text, tipe text default 'info', booking_id integer, dibaca integer default 0, shown integer default 0, waktu_utc text)",
 
   "create table blocks(id integer primary key autoincrement, idx integer, ts text, data text, prev_hash text, hash text)",
 ];
@@ -221,7 +234,7 @@ Future<void> initDb() async {
 
   db = await openDatabase(
     path,
-    version: 2,
+    version: 4,
     onCreate: (database, version) async {
       for (final sql in _schema) {
         await database.execute(sql);
@@ -243,6 +256,22 @@ Future<void> initDb() async {
         );
         await database.execute(
           'ALTER TABLE doctors ADD COLUMN photo_path TEXT',
+        );
+      }
+      if (oldVersion < 3) {
+        // Simpan nama treatment di booking karena daftar treatment
+        // berasal dari Supabase (ID-nya tidak sama dengan tabel lokal).
+        await database.execute(
+          'ALTER TABLE bookings ADD COLUMN treatment_nama TEXT',
+        );
+      }
+      if (oldVersion < 4) {
+        await database.execute(
+          'CREATE TABLE IF NOT EXISTS notifications('
+          'id integer primary key autoincrement, user_id integer, '
+          'judul text, isi text, tipe text default \'info\', '
+          'booking_id integer, dibaca integer default 0, '
+          'shown integer default 0, waktu_utc text)',
         );
       }
     },
@@ -321,6 +350,32 @@ Future<void> initDb() async {
         whereArgs: [doctor['nama']],
       );
     }
+  }
+
+  // Akun staf demo (login tidak lagi membuat akun pasien baru).
+  final staff = await db.query(
+    'users',
+    where: 'lower(trim(email)) = ?',
+    whereArgs: [kStaffEmail],
+    limit: 1,
+  );
+
+  if (staff.isEmpty) {
+    final salt = newSalt();
+    await db.insert('users', {
+      'nama': 'Staf GlowClinic',
+      'email': kStaffEmail,
+      'role': 'staf',
+      'salt': salt,
+      'pass_hash': hashPw(salt, kStaffPassword),
+    });
+  } else if ('${staff.first['role']}'.trim().toLowerCase() != 'staf') {
+    await db.update(
+      'users',
+      {'role': 'staf'},
+      where: 'id = ?',
+      whereArgs: [staff.first['id']],
+    );
   }
 }
 

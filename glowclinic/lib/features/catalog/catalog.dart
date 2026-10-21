@@ -1614,13 +1614,19 @@ class Detail extends StatelessWidget {
                     borderRadius: BorderRadius.circular(30),
                   ),
                 ),
-                onPressed: () {
-                  Navigator.push(
+                onPressed: () async {
+                  final message = await Navigator.push<String>(
                     context,
                     MaterialPageRoute(
                       builder: (_) => BookingScreen(t),
                     ),
                   );
+
+                  if (message != null && context.mounted) {
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      SnackBar(content: Text(message)),
+                    );
+                  }
                 },
                 child: const Row(
                   mainAxisAlignment: MainAxisAlignment.center,

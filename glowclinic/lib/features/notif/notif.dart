@@ -114,3 +114,108 @@ Future<void> syncNotif(Map<String, dynamic> b) async {
     );
   }
 }
+
+// ---------- Notifikasi langsung & promo ----------
+
+/// Isi promo (judul, isi). Ganti dengan promo klinik yang berlaku.
+const List<List<String>> kPromos = [
+  [
+    '⚡ Flash Sale GlowClinic',
+    'Diskon 20% Facial Medis khusus hari ini. Booking sekarang!',
+  ],
+  [
+    '🎁 Voucher Treatment Pertama',
+    'Pakai kode GLOW10 untuk potongan treatment pertamamu.',
+  ],
+  [
+    '✨ Gratis Konsultasi Kulit',
+    'Booking treatment hari ini, konsultasi dokter gratis.',
+  ],
+  [
+    '🔥 Paket Acne Care Hemat',
+    'Paket 3x perawatan jerawat lebih hemat. Slot terbatas!',
+  ],
+  [
+    '🎰 Putar GlowSpin!',
+    'Selesaikan treatment dan menangkan hadiah di GlowSpin.',
+  ],
+  [
+    '🌙 Promo Malam Ini',
+    'Diskon 15% Chemical Peeling sampai tengah malam.',
+  ],
+];
+
+const _promoBase = 900000;
+
+NotificationDetails _details({required bool promo}) => NotificationDetails(
+      android: AndroidNotificationDetails(
+        promo ? 'promo' : 'glow',
+        promo ? 'Promo GlowClinic' : 'GlowClinic',
+        channelDescription: promo
+            ? 'Promo dan penawaran GlowClinic'
+            : 'Pengingat booking dan aftercare treatment',
+        importance: Importance.high,
+        priority: Priority.high,
+        styleInformation: BigTextStyleInformation(''),
+      ),
+    );
+
+/// Menampilkan notifikasi sistem sekarang juga.
+Future<void> showNow(
+  int id,
+  String title,
+  String body, {
+  bool promo = false,
+}) async {
+  await _np.show(
+    id,
+    title,
+    body,
+    NotificationDetails(
+      android: AndroidNotificationDetails(
+        promo ? 'promo' : 'glow',
+        promo ? 'Promo GlowClinic' : 'GlowClinic',
+        channelDescription: promo
+            ? 'Promo dan penawaran GlowClinic'
+            : 'Pengingat booking dan aftercare treatment',
+        importance: Importance.high,
+        priority: Priority.high,
+        styleInformation: BigTextStyleInformation(body),
+      ),
+    ),
+  );
+}
+
+Future<void> cancelPromos() async {
+  for (var i = 0; i < 30; i++) {
+    await _np.cancel(_promoBase + i);
+  }
+}
+
+/// Menjadwalkan promo harian (12.00 dan 19.00) untuk 7 hari ke depan.
+Future<void> schedulePromos() async {
+  await cancelPromos();
+
+  final now = DateTime.now();
+  var n = 0;
+
+  for (var d = 0; d < 7; d++) {
+    for (final hour in const [12, 19]) {
+      final when = DateTime(now.year, now.month, now.day + d, hour);
+      if (!when.isAfter(now)) continue;
+
+      final promo = kPromos[(now.day + d * 2 + hour) % kPromos.length];
+
+      await _np.zonedSchedule(
+        _promoBase + n,
+        promo[0],
+        promo[1],
+        tz.TZDateTime.from(when, tz.local),
+        _details(promo: true),
+        androidScheduleMode: AndroidScheduleMode.inexactAllowWhileIdle,
+      );
+
+      n++;
+    }
+  }
+}

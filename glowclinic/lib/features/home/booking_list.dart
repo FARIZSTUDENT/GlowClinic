@@ -7,6 +7,7 @@ import 'package:glowclinic/features/skin/skin_journal.dart';
 import 'package:glowclinic/features/spin/glowspin.dart';
 import 'package:glowclinic/features/feedback/feedback.dart';
 import 'package:glowclinic/features/notif/notif.dart';
+import 'package:glowclinic/features/notif/inbox.dart';
 
 class BookingList extends StatefulWidget {
   const BookingList({super.key, required this.staff});
@@ -24,16 +25,24 @@ class _BookingListState extends State<BookingList> {
   void initState() {
     super.initState();
     _future = load();
+    bookingRefresh.addListener(reload);
+  }
+
+  @override
+  void dispose() {
+    bookingRefresh.removeListener(reload);
+    super.dispose();
   }
 
   Future<List<Map<String, dynamic>>> load() async {
     final bookings = await qry(
-      'SELECT b.*, t.nama AS t_nama, d.nama AS d_nama, '
-      'u.nama AS u_nama '
+      'SELECT b.*, '
+      "COALESCE(b.treatment_nama, t.nama, 'Treatment') AS t_nama, "
+      'd.nama AS d_nama, u.nama AS u_nama '
       'FROM bookings b '
-      'JOIN treatments t ON t.id = b.treatment_id '
-      'JOIN doctors d ON d.id = b.doctor_id '
-      'JOIN users u ON u.id = b.user_id '
+      'LEFT JOIN treatments t ON t.id = b.treatment_id '
+      'LEFT JOIN doctors d ON d.id = b.doctor_id '
+      'LEFT JOIN users u ON u.id = b.user_id '
       '${widget.staff ? '' : 'WHERE b.user_id = ? '}'
       'ORDER BY b.waktu_utc DESC',
       widget.staff ? [] : [myId],
@@ -60,21 +69,93 @@ class _BookingListState extends State<BookingList> {
     });
   }
 
+  /// Alur status booking: Menunggu -> Dikonfirmasi -> Check-in -> Selesai.
+  static const _flow = {
+    'pending': ['confirmed', 'cancelled'],
+    'confirmed': ['checked_in', 'cancelled'],
+    'checked_in': ['done', 'cancelled'],
+  };
+
+  Future<void> _notifyPatient(Map<String, dynamic> b, String status) async {
+    final what = '${b['t_nama'] ?? 'treatment'}';
+    final uid = b['user_id'] as int?;
+    final bid = b['id'] as int?;
+
+    switch (status) {
+      case 'confirmed':
+        await pushNotif(
+          userId: uid,
+          judul: 'Booking dikonfirmasi ✅',
+          isi: '$what dengan ${b['d_nama'] ?? 'dokter'} pada '
+              '${fmtDateTime(b['waktu_utc'])}. Tekan Check-in saat tiba '
+              'di klinik.',
+          tipe: 'booking',
+          bookingId: bid,
+        );
+      case 'cancelled':
+        await pushNotif(
+          userId: uid,
+          judul: 'Booking dibatalkan ❌',
+          isi: 'Booking $what tidak dapat diproses. '
+              'Silakan buat booking baru.',
+          tipe: 'booking',
+          bookingId: bid,
+        );
+      case 'checked_in':
+        await pushNotif(
+          userId: uid,
+          judul: 'Check-in dicatat staf 📍',
+          isi: 'Silakan lanjutkan pembayaran QRIS untuk $what.',
+          tipe: 'bayar',
+          bookingId: bid,
+        );
+      case 'done':
+        await pushNotif(
+          userId: uid,
+          judul: 'Treatment selesai 🎉',
+          isi: '$what telah selesai. Isi jurnal kulit, putar GlowSpin, '
+              'dan beri ulasan ya!',
+          tipe: 'booking',
+          bookingId: bid,
+        );
+    }
+  }
+
   Future<void> setStatus(Map<String, dynamic> booking, String status) async {
     if (!widget.staff) return;
 
     final id = booking['id'];
-    final oldStatus = booking['status'];
+    final oldStatus = '${booking['status']}';
 
     if (oldStatus == status) return;
 
+    if (!(_flow[oldStatus] ?? const <String>[]).contains(status)) {
+      snack(context, 'Langkah ini tidak valid untuk status saat ini.');
+      return;
+    }
+
+    if (status == 'done' && booking['status_bayar'] != 'lunas') {
+      snack(
+        context,
+        'Pembayaran harus lunas sebelum treatment ditandai selesai.',
+      );
+      return;
+    }
+
     try {
-      await db.update(
+      final updated = await db.update(
         'bookings',
         {'status': status},
         where: 'id = ? AND status = ?',
         whereArgs: [id, oldStatus],
       );
+
+      if (updated == 0) {
+        if (!mounted) return;
+        snack(context, 'Status booking sudah berubah. Daftar dimuat ulang.');
+        reload();
+        return;
+      }
 
       if (status == 'done') {
         try {
@@ -83,6 +164,8 @@ class _BookingListState extends State<BookingList> {
           debugPrint('Gagal mencatat blockchain: $e');
         }
       }
+
+      await _notifyPatient(booking, status);
 
       if (!mounted) return;
 
@@ -157,63 +240,83 @@ class _BookingListState extends State<BookingList> {
     }
   }
 
+  bool _acting = false;
+
   Future<void> act(
     BuildContext actionContext,
     Map<String, dynamic> booking,
     String action,
   ) async {
-    switch (action) {
-      case 'bayar':
-        await payQris(actionContext, booking);
-        break;
+    if (_acting) return;
+    _acting = true;
 
-      case 'lunas':
-        await payQris(actionContext, booking);
-        break;
+    try {
+      switch (action) {
+        case 'bayar':
+          await payQris(actionContext, booking);
+          break;
 
-      case 'checkin':
-        await doCheckIn(actionContext, booking);
-        break;
+        case 'checkin':
+          {
+            final ok = await doCheckIn(actionContext, booking);
 
-      case 'foto':
-        await Navigator.push(
-          actionContext,
-          MaterialPageRoute(builder: (_) => PhotoScreen(booking)),
-        );
-        break;
+            // Setelah check-in, pasien langsung diarahkan untuk membayar.
+            if (ok && actionContext.mounted) {
+              await payQris(actionContext, {...booking, 'status': 'checked_in'});
+            }
+          }
+          break;
 
-      case 'spin':
-        await Navigator.push(
-          actionContext,
-          MaterialPageRoute(builder: (_) => SpinScreen(booking)),
-        );
-        break;
+        case 'checkin_manual':
+          await setStatus(booking, 'checked_in');
+          break;
 
-      case 'ulasan':
-        await Navigator.push(
-          actionContext,
-          MaterialPageRoute(builder: (_) => FeedbackScreen(booking)),
-        );
-        break;
+        case 'foto':
+          await Navigator.push(
+            actionContext,
+            MaterialPageRoute(builder: (_) => PhotoScreen(booking)),
+          );
+          break;
 
-      case 'catatan':
-        await note(actionContext, booking);
-        break;
+        case 'spin':
+          await Navigator.push(
+            actionContext,
+            MaterialPageRoute(builder: (_) => SpinScreen(booking)),
+          );
+          break;
 
-      case 'confirm':
-        await setStatus(booking, 'confirmed');
-        break;
+        case 'ulasan':
+          await Navigator.push(
+            actionContext,
+            MaterialPageRoute(builder: (_) => FeedbackScreen(booking)),
+          );
+          break;
 
-      case 'done':
-        await setStatus(booking, 'done');
-        break;
+        case 'catatan':
+          await note(actionContext, booking);
+          break;
 
-      case 'cancel':
-        await setStatus(booking, 'cancelled');
-        break;
+        case 'confirm':
+          await setStatus(booking, 'confirmed');
+          break;
 
-      default:
-        return;
+        case 'verifikasi':
+          await confirmPaid(actionContext, booking);
+          break;
+
+        case 'done':
+          await setStatus(booking, 'done');
+          break;
+
+        case 'cancel':
+          await setStatus(booking, 'cancelled');
+          break;
+
+        default:
+          return;
+      }
+    } finally {
+      _acting = false;
     }
 
     if (!mounted) return;
@@ -221,38 +324,172 @@ class _BookingListState extends State<BookingList> {
     reload();
   }
 
+  /// Menu titik tiga (khusus staf): aksi sekunder.
   List<PopupMenuEntry<String>> menuItems(Map<String, dynamic> booking) {
+    if (!widget.staff) return [];
+
     final status = booking['status']?.toString() ?? '';
 
-    if (widget.staff) {
-      return [
-        const PopupMenuItem(
-          value: 'confirm',
-          child: Text('Konfirmasi booking'),
-        ),
-        const PopupMenuItem(value: 'done', child: Text('Tandai selesai')),
-        const PopupMenuItem(value: 'cancel', child: Text('Batalkan booking')),
+    return [
+      if (status != 'cancelled')
         const PopupMenuItem(value: 'catatan', child: Text('Catatan treatment')),
-      ];
+      if (status == 'pending' || status == 'confirmed' || status == 'checked_in')
+        const PopupMenuItem(value: 'cancel', child: Text('Batalkan booking')),
+    ];
+  }
+
+  /// Petunjuk langkah berikutnya sesuai peran dan status.
+  String? nextStep(Map<String, dynamic> b, String status) {
+    final pay = '${b['status_bayar']}';
+
+    if (widget.staff) {
+      switch (status) {
+        case 'pending':
+          return 'Periksa booking, lalu Acc atau Tolak.';
+        case 'confirmed':
+          return 'Menunggu pasien check-in di klinik.';
+        case 'checked_in':
+          if (pay == 'lunas') {
+            return 'Pembayaran lunas. Lakukan treatment, isi catatan, '
+                'lalu tandai selesai.';
+          }
+          if (pay == 'menunggu_verifikasi') {
+            return 'Pasien sudah membayar. Verifikasi pembayaran.';
+          }
+          return 'Menunggu pasien menyelesaikan pembayaran.';
+        case 'done':
+          return 'Treatment selesai.';
+      }
+      return null;
     }
 
+    switch (status) {
+      case 'pending':
+        return 'Menunggu konfirmasi staf klinik.';
+      case 'confirmed':
+        return 'Datang ke klinik lalu tekan Check-in '
+            '(maks. 100 m dari cabang).';
+      case 'checked_in':
+        if (pay == 'lunas') {
+          return 'Pembayaran lunas. Treatment sedang berlangsung.';
+        }
+        if (pay == 'menunggu_verifikasi') {
+          return 'Pembayaran sedang diverifikasi staf.';
+        }
+        return 'Silakan lakukan pembayaran QRIS.';
+      case 'done':
+        return 'Treatment selesai. Isi jurnal kulit, putar GlowSpin, '
+            'dan beri ulasan.';
+    }
+
+    return null;
+  }
+
+  /// Tombol aksi utama: (label, ikon, kode aksi, tombol utama?).
+  List<(String, IconData, String, bool)> actionsFor(
+    Map<String, dynamic> b,
+    String status,
+  ) {
+    final pay = '${b['status_bayar']}';
+
+    if (widget.staff) {
+      switch (status) {
+        case 'pending':
+          return [
+            ('Acc', Icons.check_rounded, 'confirm', true),
+            ('Tolak', Icons.close_rounded, 'cancel', false),
+          ];
+        case 'confirmed':
+          return [
+            ('Check-in manual', Icons.how_to_reg_outlined, 'checkin_manual', true),
+            ('Batalkan', Icons.close_rounded, 'cancel', false),
+          ];
+        case 'checked_in':
+          return [
+            if (pay == 'menunggu_verifikasi')
+              ('Verifikasi pembayaran', Icons.verified_outlined, 'verifikasi', true),
+            if (pay == 'lunas')
+              ('Tandai selesai', Icons.task_alt_rounded, 'done', true),
+            ('Catatan', Icons.edit_note_rounded, 'catatan', false),
+          ];
+      }
+      return [];
+    }
+
+    switch (status) {
+      case 'confirmed':
+        return [('Check-in', Icons.location_on_outlined, 'checkin', true)];
+      case 'checked_in':
+        if (pay == 'lunas') return [];
+        return [
+          pay == 'menunggu_verifikasi'
+              ? ('Lihat QRIS', Icons.qr_code_2_rounded, 'bayar', false)
+              : ('Bayar sekarang', Icons.qr_code_2_rounded, 'bayar', true),
+        ];
+      case 'done':
+        return [
+          ('Jurnal kulit', Icons.photo_camera_outlined, 'foto', false),
+          if (pay == 'lunas')
+            ('GlowSpin', Icons.casino_outlined, 'spin', false),
+          ('Ulasan', Icons.rate_review_outlined, 'ulasan', false),
+        ];
+    }
+
+    return [];
+  }
+
+  List<Widget> hintAndActions(
+    BuildContext context,
+    Map<String, dynamic> booking,
+    String status,
+  ) {
+    final hint = nextStep(booking, status);
+    final actions = actionsFor(booking, status);
+
     return [
-      if (status == 'pending')
-        const PopupMenuItem(value: 'bayar', child: Text('Pembayaran')),
-      if (status == 'confirmed')
-        const PopupMenuItem(value: 'checkin', child: Text('Check-in')),
-      if (status == 'done') ...[
-        const PopupMenuItem(value: 'foto', child: Text('Jurnal kulit')),
-        if (booking['status_bayar'] == 'lunas')
-          PopupMenuItem(
-            value: 'spin',
-            child: Text(
-              (booking['spin_hadiah'] == null || '${booking['spin_hadiah']}'.isEmpty)
-                  ? 'GlowSpin'
-                  : 'Lihat hadiah: ${booking['spin_hadiah']}',
-            ),
+      if (hint != null) ...[
+        const SizedBox(height: 12),
+        Container(
+          padding: const EdgeInsets.all(10),
+          decoration: BoxDecoration(
+            color: const Color(0xFFFFF0F4),
+            borderRadius: BorderRadius.circular(12),
           ),
-        const PopupMenuItem(value: 'ulasan', child: Text('Beri ulasan')),
+          child: Row(
+            children: [
+              const Icon(
+                Icons.info_outline,
+                size: 18,
+                color: Color(0xFFD85F89),
+              ),
+              const SizedBox(width: 8),
+              Expanded(
+                child: Text(hint, style: const TextStyle(fontSize: 13)),
+              ),
+            ],
+          ),
+        ),
+      ],
+      if (actions.isNotEmpty) ...[
+        const SizedBox(height: 12),
+        Wrap(
+          spacing: 8,
+          runSpacing: 8,
+          children: [
+            for (final a in actions)
+              a.$4
+                  ? FilledButton.icon(
+                      onPressed: () => act(context, booking, a.$3),
+                      icon: Icon(a.$2, size: 18),
+                      label: Text(a.$1),
+                    )
+                  : OutlinedButton.icon(
+                      onPressed: () => act(context, booking, a.$3),
+                      icon: Icon(a.$2, size: 18),
+                      label: Text(a.$1),
+                    ),
+          ],
+        ),
       ],
     ];
   }
@@ -261,6 +498,8 @@ class _BookingListState extends State<BookingList> {
     switch (status) {
       case 'confirmed':
         return Colors.green;
+      case 'checked_in':
+        return Colors.teal;
       case 'done':
         return Colors.blue;
       case 'cancelled':
@@ -276,12 +515,25 @@ class _BookingListState extends State<BookingList> {
         return 'Menunggu';
       case 'confirmed':
         return 'Dikonfirmasi';
+      case 'checked_in':
+        return 'Check-in';
       case 'done':
         return 'Selesai';
       case 'cancelled':
         return 'Dibatalkan';
       default:
         return status;
+    }
+  }
+
+  String payLabel(String? v) {
+    switch (v) {
+      case 'lunas':
+        return 'Lunas';
+      case 'menunggu_verifikasi':
+        return 'Menunggu verifikasi bayar';
+      default:
+        return 'Belum bayar';
     }
   }
 
@@ -364,7 +616,7 @@ class _BookingListState extends State<BookingList> {
               final booking = bookings[index];
               final status = booking['status']?.toString() ?? 'pending';
               final color = statusColor(status);
-              final waktu = booking['waktu_utc']?.toString() ?? '-';
+              final waktu = fmtDateTime(booking['waktu_utc']);
 
               return Card(
                 margin: const EdgeInsets.only(bottom: 12),
@@ -397,13 +649,14 @@ class _BookingListState extends State<BookingList> {
                               ],
                             ),
                           ),
-                          PopupMenuButton<String>(
-                            tooltip: 'Aksi booking',
-                            onSelected: (action) {
-                              act(context, booking, action);
-                            },
-                            itemBuilder: (_) => menuItems(booking),
-                          ),
+                          if (menuItems(booking).isNotEmpty)
+                            PopupMenuButton<String>(
+                              tooltip: 'Aksi booking',
+                              onSelected: (action) {
+                                act(context, booking, action);
+                              },
+                              itemBuilder: (_) => menuItems(booking),
+                            ),
                         ],
                       ),
                       const SizedBox(height: 12),
@@ -416,6 +669,10 @@ class _BookingListState extends State<BookingList> {
                             avatar: Icon(Icons.circle, size: 10, color: color),
                             label: Text(statusLabel(status)),
                           ),
+                          Chip(
+                            avatar: const Icon(Icons.payments_outlined, size: 16),
+                            label: Text(payLabel(booking['status_bayar']?.toString())),
+                          ),
                           if (booking['catatan_dokter'] != null &&
                               booking['catatan_dokter']
                                   .toString()
@@ -427,6 +684,7 @@ class _BookingListState extends State<BookingList> {
                             ),
                         ],
                       ),
+                      ...hintAndActions(context, booking, status),
                     ],
                   ),
                 ),

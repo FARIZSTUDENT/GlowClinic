@@ -2,6 +2,8 @@ import 'package:flutter/material.dart';
 import 'package:flutter_map/flutter_map.dart';
 import 'package:latlong2/latlong.dart';
 import 'package:geolocator/geolocator.dart';
+import 'package:url_launcher/url_launcher.dart';
+import 'package:glowclinic/features/notif/inbox.dart';
 import 'package:glowclinic/core/core.dart';
 
 double? _coordinate(dynamic value) {
@@ -10,6 +12,37 @@ double? _coordinate(dynamic value) {
   }
 
   return double.tryParse(value.toString());
+}
+
+/// Membuka lokasi cabang di Google Maps (aplikasi atau browser).
+Future<void> openBranchInMaps(
+  BuildContext context,
+  Map<String, dynamic> branch,
+) async {
+  final lat = _coordinate(branch['lat']);
+  final lng = _coordinate(branch['lng']);
+
+  if (lat == null || lng == null) {
+    snack(context, 'Koordinat cabang tidak valid.');
+    return;
+  }
+
+  final uri = Uri.https('www.google.com', '/maps/search/', {
+    'api': '1',
+    'query': '$lat,$lng',
+  });
+
+  try {
+    final opened = await launchUrl(uri, mode: LaunchMode.externalApplication);
+
+    if (!opened && context.mounted) {
+      snack(context, 'Tidak dapat membuka Google Maps.');
+    }
+  } catch (_) {
+    if (context.mounted) {
+      snack(context, 'Tidak dapat membuka Google Maps.');
+    }
+  }
 }
 
 Future<Position?> myPos() async {
@@ -39,22 +72,23 @@ Future<Position?> myPos() async {
   }
 }
 
-Future<void> doCheckIn(BuildContext context, Map booking) async {
+/// Mengembalikan true jika check-in berhasil.
+Future<bool> doCheckIn(BuildContext context, Map booking) async {
   if (booking['status'] != 'confirmed') {
     snack(context, 'Check-in hanya tersedia untuk booking terkonfirmasi.');
-    return;
+    return false;
   }
 
   try {
     final position = await myPos();
 
     if (!context.mounted) {
-      return;
+      return false;
     }
 
     if (position == null) {
       snack(context, 'Aktifkan layanan lokasi dan izinkan akses lokasi.');
-      return;
+      return false;
     }
 
     final branches = await qry('select lat, lng from branches where id = ?', [
@@ -62,12 +96,12 @@ Future<void> doCheckIn(BuildContext context, Map booking) async {
     ]);
 
     if (!context.mounted) {
-      return;
+      return false;
     }
 
     if (branches.isEmpty) {
       snack(context, 'Data cabang tidak ditemukan.');
-      return;
+      return false;
     }
 
     final latitude = _coordinate(branches.first['lat']);
@@ -80,7 +114,7 @@ Future<void> doCheckIn(BuildContext context, Map booking) async {
         longitude < -180 ||
         longitude > 180) {
       snack(context, 'Koordinat cabang tidak valid.');
-      return;
+      return false;
     }
 
     final distance = Geolocator.distanceBetween(
@@ -96,27 +130,57 @@ Future<void> doCheckIn(BuildContext context, Map booking) async {
         'Kamu belum berada dalam radius 100 m dari cabang '
         '(jarak ${distance.toStringAsFixed(0)} m).',
       );
-      return;
+      return false;
     }
 
-    await db.update(
+    final updated = await db.update(
       'bookings',
       {'status': 'checked_in'},
       where: 'id = ? AND status = ?',
       whereArgs: [booking['id'], 'confirmed'],
     );
 
-    if (!context.mounted) {
-      return;
+    if (updated == 0) {
+      if (context.mounted) {
+        snack(context, 'Status booking berubah. Muat ulang daftar booking.');
+      }
+      return false;
     }
 
-    snack(context, 'Check-in berhasil.');
+    final who = '${booking['u_nama'] ?? 'Pasien'}';
+    final what = '${booking['t_nama'] ?? 'treatment'}';
+
+    await pushNotif(
+      toStaff: true,
+      judul: 'Pasien sudah check-in 📍',
+      isi: '$who tiba di klinik untuk $what.',
+      tipe: 'booking',
+      bookingId: booking['id'] as int?,
+    );
+
+    await pushNotif(
+      userId: myId,
+      judul: 'Check-in berhasil ✅',
+      isi: 'Silakan lanjutkan pembayaran QRIS untuk $what.',
+      tipe: 'bayar',
+      bookingId: booking['id'] as int?,
+    );
+
+    if (!context.mounted) {
+      return true;
+    }
+
+    snack(context, 'Check-in berhasil. Lanjutkan pembayaran.');
+    return true;
   } catch (_) {
     if (context.mounted) {
       snack(context, 'Check-in gagal. Periksa koneksi dan coba lagi.');
     }
+    return false;
   }
 }
+
+
 
 class BranchMap extends StatefulWidget {
   const BranchMap({super.key});
@@ -277,35 +341,7 @@ class _BranchMapState extends State<BranchMap> {
                       height: 40,
                       child: GestureDetector(
                         behavior: HitTestBehavior.opaque,
-                        onTap: () => showModalBottomSheet<void>(
-                          context: context,
-                          showDragHandle: true,
-                          builder: (sheetContext) => SafeArea(
-                            child: Padding(
-                              padding: const EdgeInsets.fromLTRB(20, 8, 20, 24),
-                              child: Column(
-                                mainAxisSize: MainAxisSize.min,
-                                crossAxisAlignment: CrossAxisAlignment.start,
-                                children: [
-                                  Text('${branch['nama'] ?? 'Cabang GlowClinic'}', style: Theme.of(sheetContext).textTheme.titleLarge),
-                                  const SizedBox(height: 8),
-                                  Text('${branch['alamat'] ?? '-'}'),
-                                  const SizedBox(height: 4),
-                                  Text('Jam buka: ${branch['jam_buka'] ?? '-'}'),
-                                  const SizedBox(height: 12),
-                                  OutlinedButton.icon(
-                                    onPressed: () {
-                                      Navigator.pop(sheetContext);
-                                      setState(() {});
-                                    },
-                                    icon: const Icon(Icons.check_circle_outline),
-                                    label: const Text('Pilih cabang ini'),
-                                  ),
-                                ],
-                              ),
-                            ),
-                          ),
-                        ),
+                        onTap: () => openBranchInMaps(context, branch),
                         child: const Icon(Icons.location_on, color: Colors.pink, size: 40),
                       ),
                     ),
@@ -336,38 +372,28 @@ class _BranchMapState extends State<BranchMap> {
 
                 return ListTile(
                   leading: const Icon(Icons.local_hospital),
-                  onTap: () => showModalBottomSheet<void>(
-                    context: context,
-                    showDragHandle: true,
-                    builder: (sheetContext) => SafeArea(
-                      child: Padding(
-                        padding: const EdgeInsets.all(20),
-                        child: Column(
-                          mainAxisSize: MainAxisSize.min,
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Text('${branch['nama'] ?? 'Cabang GlowClinic'}', style: Theme.of(sheetContext).textTheme.titleLarge),
-                            const SizedBox(height: 8),
-                            Text('${branch['alamat'] ?? '-'}'),
-                            Text('Jam buka: ${branch['jam_buka'] ?? '-'}'),
-                            Text('Jarak: ${distance == null ? 'tidak diketahui' : distance < 1000 ? '${distance.toStringAsFixed(0)} m' : '${(distance / 1000).toStringAsFixed(1)} km'}'),
-                          ],
-                        ),
-                      ),
-                    ),
-                  ),
+                  onTap: () => openBranchInMaps(context, branch),
                   title: Text(branch['nama']?.toString() ?? 'Cabang'),
                   subtitle: Text(
                     '${branch['alamat'] ?? '-'}\n'
                     'Buka ${branch['jam_buka'] ?? '-'}',
                   ),
                   isThreeLine: true,
-                  trailing: Text(
-                    distance == null
-                        ? '-'
-                        : distance < 1000
-                        ? '${distance.toStringAsFixed(0)} m'
-                        : '${(distance / 1000).toStringAsFixed(1)} km',
+                  trailing: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      const Icon(Icons.directions, color: Colors.pink),
+                      const SizedBox(height: 2),
+                      Text(
+                        distance == null
+                            ? '-'
+                            : distance < 1000
+                                ? '${distance.toStringAsFixed(0)} m'
+                                : '${(distance / 1000).toStringAsFixed(1)} km',
+                        style: const TextStyle(fontSize: 12),
+                      ),
+                    ],
                   ),
                 );
               },

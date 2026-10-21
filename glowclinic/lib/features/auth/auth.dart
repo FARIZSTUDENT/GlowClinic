@@ -1,9 +1,12 @@
 
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:local_auth/local_auth.dart';
 import 'package:glowclinic/core/core.dart';
 import 'package:glowclinic/features/home/patient_home.dart';
 import 'package:glowclinic/features/home/staff_home.dart';
+import 'package:glowclinic/features/notif/inbox.dart';
+import 'package:glowclinic/features/notif/notif.dart';
 
 // Membuat sesi login
 Future<void> startSession(int id) async {
@@ -15,6 +18,9 @@ Future<void> startSession(int id) async {
     value: '${DateTime.now().add(const Duration(hours: 24)).millisecondsSinceEpoch}',
   );
   await store.write(key: 'tok', value: newSalt());
+
+  // Akun ini diingat agar login berikutnya cukup dengan biometrik.
+  await store.write(key: 'last_uid', value: '$id');
 }
 
 // Membaca sesi login dengan penanganan error
@@ -96,8 +102,24 @@ Future<void> goHome(BuildContext c) async {
   );
 }
 
+// Lupakan akun terakhir (untuk "Gunakan akun lain")
+Future<void> forgetAccount() async {
+  try {
+    await clearSession();
+    await store.delete(key: 'last_uid');
+  } catch (_) {
+    myId = null;
+  }
+}
+
 // Logout
 Future<void> logout(BuildContext c) async {
+  stopNotifWatcher();
+
+  try {
+    await cancelPromos();
+  } catch (_) {}
+
   try {
     await clearSession();
   } catch (_) {
@@ -108,12 +130,12 @@ Future<void> logout(BuildContext c) async {
 
   Navigator.pushAndRemoveUntil(
     c,
-    MaterialPageRoute(builder: (_) => const LoginScreen()),
+    MaterialPageRoute(builder: (_) => const Gate()),
     (_) => false,
   );
 }
 
-// ---------- Gate: sesi + biometrik ----------
+// ---------- Gate: biometrik wajib, password setelah 3x gagal ----------
 
 class Gate extends StatefulWidget {
   const Gate({super.key});
@@ -123,81 +145,33 @@ class Gate extends StatefulWidget {
 }
 
 class _G extends State<Gate> {
-  bool _started = false;
+  static const _maxFails = 3;
+  static const _primary = Color(0xFFD85F89);
+  static const _ink = Color(0xFF513B45);
+
+  final _la = LocalAuthentication();
+  final _pw = TextEditingController();
+
+  int? _uid;
+  String _name = '';
+  int _fails = 0;
+  bool _checking = true;
+  bool _busy = false;
+  bool _askPassword = false;
+  String? _note;
+  String? _err;
 
   @override
   void initState() {
     super.initState();
 
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      if (!_started) {
-        _started = true;
-        run();
-      }
-    });
+    WidgetsBinding.instance.addPostFrameCallback((_) => _start());
   }
 
-  Future<void> run() async {
-    // Periksa sesi login.
-    final validSession = await loadSession();
-
-    if (!mounted) return;
-
-    if (!validSession) {
-      _login();
-      return;
-    }
-
-    // Periksa pengaturan biometrik.
-    String? bio;
-
-    try {
-      bio = await store.read(key: 'bio');
-    } catch (_) {
-      // Jika pembacaan storage gagal, minta login ulang.
-      try {
-        await clearSession();
-      } catch (_) {}
-
-      if (mounted) _login();
-      return;
-    }
-
-    if (!mounted) return;
-
-    // Jika biometrik aktif, lakukan verifikasi.
-    if (bio == '1') {
-      final la = LocalAuthentication();
-
-      for (var i = 0; i < 2; i++) {
-        try {
-          final authenticated = await la.authenticate(
-            localizedReason: 'Verifikasi untuk masuk',
-          );
-
-          if (!mounted) return;
-
-          if (authenticated) {
-            await goHome(context);
-            return;
-          }
-        } catch (_) {
-          // Jika autentikasi gagal, lanjutkan percobaan berikutnya.
-        }
-      }
-
-      try {
-        await clearSession();
-      } catch (_) {}
-
-      if (mounted) _login();
-      return;
-    }
-
-    // Jika biometrik tidak aktif, langsung menuju halaman utama.
-    if (mounted) {
-      await goHome(context);
-    }
+  @override
+  void dispose() {
+    _pw.dispose();
+    super.dispose();
   }
 
   void _login() {
@@ -209,11 +183,330 @@ class _G extends State<Gate> {
     );
   }
 
+  Future<void> _start() async {
+    int? id;
+
+    try {
+      final u = await store.read(key: 'uid') ?? await store.read(key: 'last_uid');
+      id = int.tryParse(u ?? '');
+    } catch (_) {
+      id = null;
+    }
+
+    if (id == null) {
+      _login();
+      return;
+    }
+
+    final rows = await qry('select id, nama from users where id = ?', [id]);
+
+    if (!mounted) return;
+
+    if (rows.isEmpty) {
+      await forgetAccount();
+      _login();
+      return;
+    }
+
+    bool available = false;
+
+    try {
+      available = await _la.isDeviceSupported() &&
+          (await _la.getAvailableBiometrics()).isNotEmpty;
+    } catch (_) {
+      available = false;
+    }
+
+    if (!mounted) return;
+
+    setState(() {
+      _uid = id;
+      _name = '${rows.first['nama'] ?? ''}'.trim();
+      _checking = false;
+
+      if (!available) {
+        _askPassword = true;
+        _note = 'Biometrik belum tersedia atau belum terdaftar di perangkat '
+            'ini. Masuk dengan password.';
+      }
+    });
+
+    if (available) {
+      await _tryBiometric();
+    }
+  }
+
+  Future<void> _tryBiometric() async {
+    if (_busy || _askPassword || _uid == null) return;
+
+    setState(() {
+      _busy = true;
+      _err = null;
+    });
+
+    var ok = false;
+
+    try {
+      ok = await _la.authenticate(
+        localizedReason: 'Verifikasi sidik jari/wajah untuk masuk',
+        options: const AuthenticationOptions(
+          biometricOnly: true,
+          stickyAuth: true,
+        ),
+      );
+
+      if (!ok) _fails++;
+    } on PlatformException catch (e) {
+      const fatal = [
+        'LockedOut',
+        'PermanentlyLockedOut',
+        'NotAvailable',
+        'NotEnrolled',
+        'PasscodeNotSet',
+      ];
+
+      _fails = fatal.contains(e.code) ? _maxFails : _fails + 1;
+    } catch (_) {
+      _fails++;
+    }
+
+    if (!mounted) return;
+
+    if (ok) {
+      await _enter();
+      return;
+    }
+
+    setState(() {
+      _busy = false;
+
+      if (_fails >= _maxFails) {
+        _askPassword = true;
+        _note = 'Biometrik gagal $_maxFails kali. '
+            'Masukkan password untuk melanjutkan.';
+      }
+    });
+  }
+
+  Future<void> _enter() async {
+    try {
+      await startSession(_uid!);
+
+      if (!mounted) return;
+
+      await goHome(context);
+    } catch (_) {
+      if (mounted) {
+        setState(() {
+          _busy = false;
+          _err = 'Gagal masuk. Coba lagi.';
+        });
+      }
+    }
+  }
+
+  Future<void> _submitPassword() async {
+    if (_busy || _uid == null) return;
+
+    setState(() {
+      _busy = true;
+      _err = null;
+    });
+
+    try {
+      final r = await qry('select * from users where id = ?', [_uid]);
+
+      final valid = r.isNotEmpty &&
+          r.first['salt'] != null &&
+          r.first['pass_hash'] != null &&
+          hashPw('${r.first['salt']}', _pw.text) == '${r.first['pass_hash']}';
+
+      if (!valid) {
+        if (mounted) {
+          setState(() {
+            _busy = false;
+            _err = 'Password salah';
+          });
+        }
+        return;
+      }
+
+      await _enter();
+    } catch (_) {
+      if (mounted) {
+        setState(() {
+          _busy = false;
+          _err = 'Gagal memeriksa password. Coba lagi.';
+        });
+      }
+    }
+  }
+
+  Future<void> _otherAccount() async {
+    await forgetAccount();
+    _login();
+  }
+
   @override
   Widget build(BuildContext c) {
-    return const Scaffold(
-      body: Center(
-        child: CircularProgressIndicator(),
+    if (_checking) {
+      return const Scaffold(
+        body: Center(child: CircularProgressIndicator()),
+      );
+    }
+
+    return Scaffold(
+      backgroundColor: const Color(0xFFFFF6F8),
+      body: SafeArea(
+        child: Center(
+          child: SingleChildScrollView(
+            padding: const EdgeInsets.all(24),
+            child: ConstrainedBox(
+              constraints: const BoxConstraints(maxWidth: 420),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  const Icon(Icons.spa_rounded, size: 52, color: _primary),
+                  const SizedBox(height: 12),
+                  const Text(
+                    'GlowClinic',
+                    textAlign: TextAlign.center,
+                    style: TextStyle(
+                      fontSize: 28,
+                      fontWeight: FontWeight.w800,
+                      color: _ink,
+                    ),
+                  ),
+                  const SizedBox(height: 6),
+                  Text(
+                    _name.isEmpty ? 'Selamat datang kembali' : 'Halo, $_name',
+                    textAlign: TextAlign.center,
+                    style: const TextStyle(color: Color(0xFF927783)),
+                  ),
+                  const SizedBox(height: 32),
+                  if (!_askPassword) ...[
+                    Center(
+                      child: InkWell(
+                        onTap: _busy ? null : _tryBiometric,
+                        borderRadius: BorderRadius.circular(60),
+                        child: Container(
+                          width: 112,
+                          height: 112,
+                          decoration: const BoxDecoration(
+                            color: Color(0xFFFFE2EB),
+                            shape: BoxShape.circle,
+                          ),
+                          child: _busy
+                              ? const Padding(
+                                  padding: EdgeInsets.all(36),
+                                  child: CircularProgressIndicator(
+                                    strokeWidth: 3,
+                                    color: _primary,
+                                  ),
+                                )
+                              : const Icon(
+                                  Icons.fingerprint_rounded,
+                                  size: 64,
+                                  color: _primary,
+                                ),
+                        ),
+                      ),
+                    ),
+                    const SizedBox(height: 16),
+                    const Text(
+                      'Sentuh sensor / pindai wajah untuk masuk',
+                      textAlign: TextAlign.center,
+                      style: TextStyle(color: _ink),
+                    ),
+                    if (_fails > 0) ...[
+                      const SizedBox(height: 8),
+                      Text(
+                        'Percobaan gagal: $_fails dari $_maxFails',
+                        textAlign: TextAlign.center,
+                        style: const TextStyle(color: Color(0xFFB4234D)),
+                      ),
+                    ],
+                  ] else ...[
+                    if (_note != null)
+                      Container(
+                        padding: const EdgeInsets.all(12),
+                        decoration: BoxDecoration(
+                          color: const Color(0xFFFFEEF1),
+                          borderRadius: BorderRadius.circular(12),
+                        ),
+                        child: Text(
+                          _note!,
+                          style: const TextStyle(
+                            color: Color(0xFFB4234D),
+                            fontSize: 13,
+                          ),
+                        ),
+                      ),
+                    const SizedBox(height: 16),
+                    TextField(
+                      controller: _pw,
+                      enabled: !_busy,
+                      obscureText: true,
+                      autofocus: true,
+                      textInputAction: TextInputAction.done,
+                      onSubmitted: (_) => _submitPassword(),
+                      decoration: InputDecoration(
+                        labelText: 'Password',
+                        prefixIcon: const Icon(Icons.lock_outline_rounded),
+                        filled: true,
+                        fillColor: Colors.white,
+                        border: OutlineInputBorder(
+                          borderRadius: BorderRadius.circular(14),
+                        ),
+                      ),
+                    ),
+                    const SizedBox(height: 14),
+                    SizedBox(
+                      height: 50,
+                      child: FilledButton(
+                        style: FilledButton.styleFrom(
+                          backgroundColor: _primary,
+                          foregroundColor: Colors.white,
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(14),
+                          ),
+                        ),
+                        onPressed: _busy ? null : _submitPassword,
+                        child: _busy
+                            ? const SizedBox(
+                                width: 22,
+                                height: 22,
+                                child: CircularProgressIndicator(
+                                  strokeWidth: 2,
+                                  color: Colors.white,
+                                ),
+                              )
+                            : const Text('Masuk'),
+                      ),
+                    ),
+                  ],
+                  if (_err != null) ...[
+                    const SizedBox(height: 12),
+                    Text(
+                      _err!,
+                      textAlign: TextAlign.center,
+                      style: const TextStyle(color: Color(0xFFB4234D)),
+                    ),
+                  ],
+                  const SizedBox(height: 20),
+                  TextButton(
+                    onPressed: _busy ? null : _otherAccount,
+                    child: const Text(
+                      'Gunakan akun lain',
+                      style: TextStyle(color: _primary),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
+        ),
       ),
     );
   }

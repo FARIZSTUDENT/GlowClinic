@@ -1,5 +1,4 @@
 import 'package:flutter/material.dart';
-import 'package:local_auth/local_auth.dart';
 import 'package:glowclinic/core/core.dart';
 import 'package:glowclinic/features/notif/notif.dart';
 import 'package:glowclinic/features/lbs/lbs.dart';
@@ -12,64 +11,6 @@ class SettingsScreen extends StatefulWidget {
 }
 
 class _ST extends State<SettingsScreen> {
-  bool bio = false;
-  bool loadingBio = true;
-
-  @override
-  void initState() {
-    super.initState();
-    _loadBio();
-  }
-
-  Future<void> _loadBio() async {
-    final value = await store.read(key: 'bio');
-
-    if (!mounted) return;
-
-    setState(() {
-      bio = value == '1';
-      loadingBio = false;
-    });
-  }
-
-  Future<void> toggle(bool value) async {
-    if (value) {
-      final auth = LocalAuthentication();
-
-      try {
-        final supported = await auth.isDeviceSupported();
-        final canCheck = await auth.canCheckBiometrics;
-        final available = await auth.getAvailableBiometrics();
-
-        if (!supported || !canCheck || available.isEmpty) {
-          if (mounted) {
-            snack(context, 'Biometrik belum tersedia atau belum terdaftar');
-          }
-          return;
-        }
-
-        final authenticated = await auth.authenticate(
-          localizedReason: 'Verifikasi untuk mengaktifkan biometrik',
-        );
-
-        if (!authenticated) return;
-
-        await store.write(key: 'bio', value: '1');
-      } catch (e) {
-        if (mounted) {
-          snack(context, 'Autentikasi biometrik gagal');
-        }
-        return;
-      }
-    } else {
-      await store.delete(key: 'bio');
-    }
-
-    if (!mounted) return;
-
-    setState(() => bio = value);
-  }
-
   Future<void> updateBranchLocation() async {
     final position = await myPos();
 
@@ -128,11 +69,12 @@ class _ST extends State<SettingsScreen> {
       appBar: AppBar(title: const Text('Pengaturan')),
       body: ListView(
         children: [
-          SwitchListTile(
-            title: const Text('Login dengan biometrik'),
-            subtitle: const Text('Sidik jari / wajah saat membuka aplikasi'),
-            value: bio,
-            onChanged: loadingBio ? null : toggle,
+          const ListTile(
+            leading: Icon(Icons.fingerprint_rounded),
+            title: Text('Login biometrik'),
+            subtitle: Text(
+              'Selalu aktif. Password dipakai setelah biometrik gagal 3 kali.',
+            ),
           ),
           ListTile(
             leading: const Icon(Icons.my_location),

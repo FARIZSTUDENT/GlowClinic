@@ -414,7 +414,7 @@ class _NotifScreenState extends State<NotifScreen> {
               return ListTile(
                 tileColor: unread ? const Color(0x14D85F89) : null,
                 leading: CircleAvatar(
-                  backgroundColor: _color(tipe).withOpacity(0.15),
+                  backgroundColor: _color(tipe).withValues(alpha: 0.15),
                   child: Icon(_icon(tipe), color: _color(tipe)),
                 ),
                 title: Text(

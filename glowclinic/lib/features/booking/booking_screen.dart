@@ -21,18 +21,67 @@ class BookingScreen extends StatefulWidget {
 }
 
 class _BookingScreenState extends State<BookingScreen> {
+  List<Map<String, dynamic>> branches = [];
+  Map<String, dynamic>? branch;
   List<Map<String, dynamic>> docs = [];
   Map<String, dynamic>? doc;
   DateTime? when;
 
+  bool loadingBranches = true;
   bool loadingDoctors = true;
   bool saving = false;
+  String? branchError;
   String? doctorError;
 
   @override
   void initState() {
     super.initState();
-    loadDoctors();
+    loadBranches();
+  }
+
+  Future<void> loadBranches() async {
+    setState(() {
+      loadingBranches = true;
+      branchError = null;
+    });
+
+    try {
+      final result = await qry('select * from branches order by id');
+
+      if (!mounted) return;
+
+      setState(() {
+        branches = List<Map<String, dynamic>>.from(result);
+        branch = branches.isNotEmpty ? branches.first : null;
+        loadingBranches = false;
+      });
+
+      if (branch != null) {
+        await loadDoctors();
+      } else {
+        setState(() {
+          loadingDoctors = false;
+          doctorError = 'Belum ada cabang yang tersedia.';
+        });
+      }
+    } catch (_) {
+      if (!mounted) return;
+      setState(() {
+        loadingBranches = false;
+        branchError = 'Gagal memuat daftar cabang.';
+        loadingDoctors = false;
+      });
+    }
+  }
+
+  Future<void> selectBranch(Map<String, dynamic>? value) async {
+    if (value == null || saving) return;
+    setState(() {
+      branch = value;
+      doc = null;
+      when = null;
+    });
+    await loadDoctors();
   }
 
   Future<void> loadDoctors() async {
@@ -42,7 +91,18 @@ class _BookingScreenState extends State<BookingScreen> {
     });
 
     try {
-      final result = await qry('select * from doctors order by nama');
+      if (branch == null) {
+        setState(() {
+          docs = [];
+          loadingDoctors = false;
+        });
+        return;
+      }
+
+      final result = await qry(
+        'select * from doctors where branch_id = ? order by nama',
+        [branch!['id']],
+      );
 
       if (!mounted) return;
 
@@ -163,7 +223,7 @@ class _BookingScreenState extends State<BookingScreen> {
       final id = await db.insert('bookings', {
         'user_id': myId,
         'doctor_id': doc!['id'],
-        'branch_id': doc!['branch_id'],
+        'branch_id': branch!['id'],
         'treatment_id': widget.t['id'],
         'treatment_nama': widget.t['nama']?.toString(),
         'waktu_utc': utc.toIso8601String(),
@@ -290,8 +350,12 @@ class _BookingScreenState extends State<BookingScreen> {
     final price = formatPrice(widget.t['harga_idr']);
     final photo = widget.t['foto_url']?.toString().trim() ?? '';
 
-    final canSubmit =
-        doc != null && when != null && !saving && !loadingDoctors;
+    final canSubmit = branch != null &&
+        doc != null &&
+        when != null &&
+        !saving &&
+        !loadingDoctors &&
+        !loadingBranches;
 
     return Scaffold(
       backgroundColor: bookingBackground,
@@ -483,7 +547,151 @@ class _BookingScreenState extends State<BookingScreen> {
 
             const SizedBox(height: 26),
 
-            _sectionTitle('Pilih dokter', '02'),
+            _sectionTitle('Pilih cabang', '02'),
+
+            const SizedBox(height: 12),
+
+            // PILIH CABANG
+            Container(
+              padding: const EdgeInsets.all(16),
+              decoration: BoxDecoration(
+                color: Colors.white,
+                borderRadius: BorderRadius.circular(20),
+                border: Border.all(color: bookingLight),
+              ),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Row(
+                    children: [
+                      Container(
+                        width: 42,
+                        height: 42,
+                        decoration: BoxDecoration(
+                          color: bookingLight,
+                          borderRadius: BorderRadius.circular(14),
+                        ),
+                        child: const Icon(
+                          Icons.location_on_outlined,
+                          color: bookingPink,
+                        ),
+                      ),
+                      const SizedBox(width: 12),
+                      const Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              'Cabang GlowClinic',
+                              style: TextStyle(
+                                color: bookingText,
+                                fontWeight: FontWeight.w800,
+                                fontSize: 13,
+                              ),
+                            ),
+                            SizedBox(height: 3),
+                            Text(
+                              'Pilih lokasi perawatanmu',
+                              style: TextStyle(
+                                color: bookingMuted,
+                                fontSize: 11,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 16),
+                  if (loadingBranches)
+                    const Center(
+                      child: Padding(
+                        padding: EdgeInsets.all(12),
+                        child: CircularProgressIndicator(color: bookingPink),
+                      ),
+                    )
+                  else if (branchError != null)
+                    Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          branchError!,
+                          style: const TextStyle(color: bookingMuted),
+                        ),
+                        TextButton.icon(
+                          onPressed: loadBranches,
+                          icon: const Icon(Icons.refresh),
+                          label: const Text('Coba lagi'),
+                        ),
+                      ],
+                    )
+                  else if (branches.isEmpty)
+                    const Text(
+                      'Belum ada cabang yang tersedia.',
+                      style: TextStyle(color: bookingMuted),
+                    )
+                  else
+                    DropdownButtonFormField<Map<String, dynamic>>(
+                      key: ValueKey(branch?['id']),
+                      initialValue: branch,
+                      isExpanded: true,
+                      decoration: InputDecoration(
+                        hintText: 'Pilih cabang',
+                        filled: true,
+                        fillColor: bookingBackground,
+                        contentPadding: const EdgeInsets.symmetric(
+                          horizontal: 14,
+                          vertical: 15,
+                        ),
+                        border: OutlineInputBorder(
+                          borderRadius: BorderRadius.circular(14),
+                          borderSide: BorderSide.none,
+                        ),
+                      ),
+                      items: [
+                        for (final item in branches)
+                          DropdownMenuItem<Map<String, dynamic>>(
+                            value: item,
+                            child: Text(
+                              item['nama']?.toString() ?? 'Cabang',
+                              overflow: TextOverflow.ellipsis,
+                            ),
+                          ),
+                      ],
+                      onChanged: saving ? null : selectBranch,
+                    ),
+                  if (branch != null) ...[
+                    const SizedBox(height: 10),
+                    Row(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        const Icon(
+                          Icons.storefront_outlined,
+                          size: 16,
+                          color: bookingMuted,
+                        ),
+                        const SizedBox(width: 7),
+                        Expanded(
+                          child: Text(
+                            '${branch!['alamat'] ?? 'Alamat belum tersedia'}'
+                            '\nJam buka: ${branch!['jam_buka'] ?? '-'}',
+                            style: const TextStyle(
+                              color: bookingMuted,
+                              fontSize: 11,
+                              height: 1.5,
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ],
+                ],
+              ),
+            ),
+
+            const SizedBox(height: 26),
+
+            _sectionTitle('Pilih dokter', '03'),
 
             const SizedBox(height: 12),
 
@@ -570,7 +778,8 @@ class _BookingScreenState extends State<BookingScreen> {
                     )
                   else
                     DropdownButtonFormField<Map<String, dynamic>>(
-                      value: doc,
+                      key: ValueKey(doc?['id']),
+                      initialValue: doc,
                       isExpanded: true,
                       decoration: InputDecoration(
                         hintText: 'Pilih dokter',
@@ -610,7 +819,7 @@ class _BookingScreenState extends State<BookingScreen> {
 
             const SizedBox(height: 26),
 
-            _sectionTitle('Atur jadwal', '03'),
+            _sectionTitle('Atur jadwal', '04'),
 
             const SizedBox(height: 12),
 
@@ -685,7 +894,7 @@ class _BookingScreenState extends State<BookingScreen> {
             const SizedBox(height: 26),
 
             // RINGKASAN PEMBAYARAN
-            _sectionTitle('Ringkasan booking', '04'),
+            _sectionTitle('Ringkasan booking', '05'),
 
             const SizedBox(height: 12),
 
@@ -698,6 +907,11 @@ class _BookingScreenState extends State<BookingScreen> {
               child: Column(
                 children: [
                   _summaryRow('Treatment', treatmentName),
+                  const SizedBox(height: 12),
+                  _summaryRow(
+                    'Cabang',
+                    branch?['nama']?.toString() ?? 'Belum dipilih',
+                  ),
                   const SizedBox(height: 12),
                   _summaryRow(
                     'Dokter',

@@ -128,10 +128,14 @@ Widget _treatmentImage(String photoUrl, {double iconSize = 32}) {
 }
 
 Widget _doctorImage(String photo, {required double size}) {
-  if (photo.startsWith('assets/')) {
+  final path = photo.trim();
+
+  if (path.startsWith('assets/')) {
     return Image.asset(
-      photo,
+      path,
       fit: BoxFit.cover,
+      width: double.infinity,
+      height: double.infinity,
       errorBuilder: (_, __, ___) => Icon(
         Icons.person_rounded,
         size: size,
@@ -139,6 +143,21 @@ Widget _doctorImage(String photo, {required double size}) {
       ),
     );
   }
+
+  if (path.startsWith('https://') || path.startsWith('http://')) {
+    return Image.network(
+      path,
+      fit: BoxFit.cover,
+      width: double.infinity,
+      height: double.infinity,
+      errorBuilder: (_, __, ___) => Icon(
+        Icons.person_rounded,
+        size: size,
+        color: pink,
+      ),
+    );
+  }
+
   return Icon(Icons.person_rounded, size: size, color: pink);
 }
 
@@ -271,23 +290,23 @@ class _CatalogState extends State<Catalog> {
   }
 
   IconData categoryIcon(String value) {
-  switch (value.toLowerCase()) {
-    case 'semua':
-      return Icons.local_florist_outlined;
-    case 'facial':
-      return Icons.face_3_outlined;
-    case 'laser':
-      return Icons.auto_awesome_outlined;
-    case 'peeling':
-      return Icons.water_drop_outlined;
-    case 'injectable':
-      return Icons.vaccines_outlined;
-    case 'konsultasi':
-      return Icons.medical_services_outlined;
-    default:
-      return Icons.local_florist_outlined;
+    switch (value.toLowerCase()) {
+      case 'semua':
+        return Icons.local_florist_outlined;
+      case 'facial':
+        return Icons.face_3_outlined;
+      case 'laser':
+        return Icons.auto_awesome_outlined;
+      case 'peeling':
+        return Icons.water_drop_outlined;
+      case 'injectable':
+        return Icons.vaccines_outlined;
+      case 'konsultasi':
+        return Icons.medical_services_outlined;
+      default:
+        return Icons.local_florist_outlined;
+    }
   }
-}
 
   void _openCategory(String value) {
     Navigator.push(
@@ -314,43 +333,38 @@ class _CatalogState extends State<Catalog> {
         padding: EdgeInsets.zero,
         children: [
           const UvCard(),
-
           _sectionHeading(
             'Kategori Perawatan',
             subtitle: 'Pilih perawatan sesuai kebutuhan kulitmu',
             onSeeAll: _openAllTreatments,
           ),
-
-          // Kategori perawatan: pill ramping dan konsisten.
           SizedBox(
             height: 56,
             child: ListView.separated(
               scrollDirection: Axis.horizontal,
-              padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 4),
+              padding: const EdgeInsets.symmetric(
+                horizontal: 18,
+                vertical: 4,
+              ),
               itemCount: categories.length,
               separatorBuilder: (_, __) => const SizedBox(width: 12),
               itemBuilder: (context, index) {
                 final item = categories[index];
-                final selected = category == item;
-
                 return _CategoryPill(
                   label: item,
                   icon: categoryIcon(item),
-                  selected: selected,
+                  selected: category == item,
                   onTap: () => _openCategory(item),
                 );
               },
             ),
           ),
-
           const SizedBox(height: 28),
-
           _sectionHeading(
             'Treatment Pilihan',
             subtitle: 'Temukan perawatan terbaik untuk kulitmu',
             onSeeAll: _openAllTreatments,
           ),
-
           FutureBuilder<List<Map<String, dynamic>>>(
             future: _treatmentFuture,
             builder: (context, snapshot) {
@@ -414,9 +428,8 @@ class _CatalogState extends State<Catalog> {
               );
             },
           ),
-
           const SizedBox(height: 32),
-          const DoctorSection(),
+        DoctorSection(),
           const SizedBox(height: 30),
         ],
       ),
@@ -715,12 +728,10 @@ class _AllTreatmentsPageState extends State<AllTreatmentsPage> {
                   separatorBuilder: (_, __) => const SizedBox(width: 12),
                   itemBuilder: (context, index) {
                     final item = widget.categories[index];
-                    final selected = category == item;
-
                     return _CategoryPill(
                       label: item,
                       icon: widget.categoryIcon(item),
-                      selected: selected,
+                      selected: category == item,
                       onTap: () => setState(() => category = item),
                     );
                   },
@@ -829,6 +840,8 @@ class _AllTreatmentsPageState extends State<AllTreatmentsPage> {
   }
 }
 
+// ==================== KATEGORI ====================
+
 class _CategoryPill extends StatelessWidget {
   final String label;
   final IconData icon;
@@ -856,7 +869,6 @@ class _CategoryPill extends StatelessWidget {
           borderRadius: BorderRadius.circular(28),
           border: Border.all(
             color: selected ? selectedColor : inactiveBorderColor,
-            width: 1.0,
           ),
         ),
         child: Material(
@@ -866,7 +878,6 @@ class _CategoryPill extends StatelessWidget {
             onTap: onTap,
             borderRadius: BorderRadius.circular(28),
             splashColor: selectedColor.withValues(alpha: 0.12),
-            highlightColor: selectedColor.withValues(alpha: 0.06),
             child: Padding(
               padding: const EdgeInsets.symmetric(
                 horizontal: 16,
@@ -874,7 +885,6 @@ class _CategoryPill extends StatelessWidget {
               ),
               child: Row(
                 mainAxisSize: MainAxisSize.min,
-                crossAxisAlignment: CrossAxisAlignment.center,
                 children: [
                   Icon(
                     icon,
@@ -901,7 +911,7 @@ class _CategoryPill extends StatelessWidget {
   }
 }
 
-// ==================== DOKTER PILIHAN ====================
+// ==================== DAFTAR DOKTER ====================
 
 class DoctorSection extends StatefulWidget {
   const DoctorSection({super.key});
@@ -911,12 +921,50 @@ class DoctorSection extends StatefulWidget {
 }
 
 class _DoctorSectionState extends State<DoctorSection> {
+  final ScrollController _scrollController = ScrollController();
+
   late Future<List<Map<String, dynamic>>> _doctorFuture;
+  Timer? _autoSlideTimer;
+
+  static const double _cardWidth = 145;
+  static const double _cardGap = 10;
 
   @override
   void initState() {
     super.initState();
-    _doctorFuture = qry('SELECT * FROM doctors ORDER BY nama LIMIT 10');
+
+    _doctorFuture = qry(
+      'SELECT * FROM doctors ORDER BY nama LIMIT 10',
+    );
+
+    _autoSlideTimer = Timer.periodic(
+      const Duration(seconds: 3),
+      (_) => _autoSlide(),
+    );
+  }
+
+  void _autoSlide() {
+    if (!mounted || !_scrollController.hasClients) return;
+
+    final position = _scrollController.position;
+
+    if (position.maxScrollExtent <= 0) return;
+
+    final nextOffset = _scrollController.offset + _cardWidth + _cardGap;
+
+    if (nextOffset >= position.maxScrollExtent - 5) {
+      _scrollController.animateTo(
+        0,
+        duration: const Duration(milliseconds: 600),
+        curve: Curves.easeInOut,
+      );
+    } else {
+      _scrollController.animateTo(
+        nextOffset,
+        duration: const Duration(milliseconds: 600),
+        curve: Curves.easeInOut,
+      );
+    }
   }
 
   void _showDoctorDetail(Map<String, dynamic> doctor) {
@@ -925,40 +973,53 @@ class _DoctorSectionState extends State<DoctorSection> {
       backgroundColor: background,
       isScrollControlled: true,
       shape: const RoundedRectangleBorder(
-        borderRadius: BorderRadius.vertical(top: Radius.circular(28)),
+        borderRadius: BorderRadius.vertical(
+          top: Radius.circular(26),
+        ),
       ),
       builder: (_) => DoctorDetailSheet(doctor: doctor),
     );
   }
 
   void _showAllDoctors() {
-    final allDoctorsFuture = qry('SELECT * FROM doctors ORDER BY nama');
+    final allDoctorsFuture = qry(
+      'SELECT * FROM doctors ORDER BY nama',
+    );
 
     showModalBottomSheet(
       context: context,
       backgroundColor: background,
       isScrollControlled: true,
       shape: const RoundedRectangleBorder(
-        borderRadius: BorderRadius.vertical(top: Radius.circular(28)),
+        borderRadius: BorderRadius.vertical(
+          top: Radius.circular(26),
+        ),
       ),
       builder: (sheetContext) {
         return SafeArea(
           child: SizedBox(
-            height: MediaQuery.of(sheetContext).size.height * 0.84,
+            height: MediaQuery.of(sheetContext).size.height * 0.82,
             child: Column(
               children: [
-                const SizedBox(height: 12),
+                const SizedBox(height: 10),
                 Container(
-                  width: 40,
+                  width: 38,
                   height: 4,
                   decoration: BoxDecoration(
                     color: pinkLight,
                     borderRadius: BorderRadius.circular(10),
                   ),
                 ),
-                Padding(
-                  padding: const EdgeInsets.all(20),
-                  child: Text('Dokter Kami', style: _heading(20)),
+                const Padding(
+                  padding: EdgeInsets.fromLTRB(20, 18, 20, 14),
+                  child: Text(
+                    'Semua Dokter',
+                    style: TextStyle(
+                      color: textDark,
+                      fontSize: 19,
+                      fontWeight: FontWeight.w800,
+                    ),
+                  ),
                 ),
                 Expanded(
                   child: FutureBuilder<List<Map<String, dynamic>>>(
@@ -967,7 +1028,9 @@ class _DoctorSectionState extends State<DoctorSection> {
                       if (snapshot.connectionState ==
                           ConnectionState.waiting) {
                         return const Center(
-                          child: CircularProgressIndicator(color: pink),
+                          child: CircularProgressIndicator(
+                            color: pink,
+                          ),
                         );
                       }
 
@@ -979,60 +1042,96 @@ class _DoctorSectionState extends State<DoctorSection> {
 
                       final doctors = snapshot.data ?? [];
 
+                      if (doctors.isEmpty) {
+                        return const Center(
+                          child: Text('Belum ada data dokter.'),
+                        );
+                      }
+
                       return GridView.builder(
-                        padding: const EdgeInsets.all(16),
-                        itemCount: doctors.length,
+                        padding: const EdgeInsets.fromLTRB(16, 4, 16, 20),
                         gridDelegate:
                             const SliverGridDelegateWithFixedCrossAxisCount(
                           crossAxisCount: 2,
                           crossAxisSpacing: 12,
                           mainAxisSpacing: 12,
-                          childAspectRatio: 0.78,
+                          childAspectRatio: 0.82,
                         ),
+                        itemCount: doctors.length,
                         itemBuilder: (context, index) {
                           final doctor = doctors[index];
                           final photo =
                               doctor['photo_path']?.toString() ?? '';
+                          final name =
+                              doctor['nama']?.toString() ?? 'Dokter';
+                          final specialization =
+                              doctor['spesialisasi']?.toString() ?? '-';
+                          final schedule =
+                              doctor['jadwal_praktik']?.toString().trim() ??
+                                  '';
 
                           return Material(
                             color: Colors.white,
-                            borderRadius: BorderRadius.circular(20),
-                            clipBehavior: Clip.antiAlias,
+                            borderRadius: BorderRadius.circular(18),
                             child: InkWell(
+                              borderRadius: BorderRadius.circular(18),
                               onTap: () {
                                 Navigator.pop(sheetContext);
                                 _showDoctorDetail(doctor);
                               },
                               child: Container(
                                 padding: const EdgeInsets.all(10),
-                                decoration: _cardDecoration(radius: 20),
+                                decoration: BoxDecoration(
+                                  borderRadius: BorderRadius.circular(18),
+                                  border: Border.all(color: pinkLight),
+                                ),
                                 child: Column(
+                                  crossAxisAlignment:
+                                      CrossAxisAlignment.center,
                                   children: [
                                     Expanded(
                                       child: ClipRRect(
-                                        borderRadius: BorderRadius.circular(15),
+                                        borderRadius:
+                                            BorderRadius.circular(13),
                                         child: Container(
                                           width: double.infinity,
-                                          color: blush,
-                                          child: _doctorImage(photo, size: 42),
+                                          color: pinkLight,
+                                          child: photo.startsWith('assets/')
+                                              ? Image.asset(
+                                                  photo,
+                                                  fit: BoxFit.cover,
+                                                  errorBuilder:
+                                                      (_, __, ___) =>
+                                                          const Icon(
+                                                    Icons.person_rounded,
+                                                    color: pink,
+                                                    size: 44,
+                                                  ),
+                                                )
+                                              : const Icon(
+                                                  Icons.person_rounded,
+                                                  color: pink,
+                                                  size: 44,
+                                                ),
                                         ),
                                       ),
                                     ),
                                     const SizedBox(height: 9),
                                     Text(
-                                      doctor['nama']?.toString() ?? 'Dokter',
+                                      name,
+                                      textAlign: TextAlign.center,
                                       maxLines: 2,
                                       overflow: TextOverflow.ellipsis,
-                                      textAlign: TextAlign.center,
                                       style: const TextStyle(
                                         color: textDark,
-                                        fontWeight: FontWeight.w800,
                                         fontSize: 12,
+                                        fontWeight: FontWeight.w800,
                                       ),
                                     ),
                                     const SizedBox(height: 4),
                                     Text(
-                                      doctor['spesialisasi']?.toString() ?? '-',
+                                      specialization,
+                                      textAlign: TextAlign.center,
                                       maxLines: 1,
                                       overflow: TextOverflow.ellipsis,
                                       style: const TextStyle(
@@ -1040,6 +1139,31 @@ class _DoctorSectionState extends State<DoctorSection> {
                                         fontSize: 10,
                                       ),
                                     ),
+                                    const SizedBox(height: 7),
+                                    if (schedule.isNotEmpty)
+                                      Container(
+                                        padding: const EdgeInsets.symmetric(
+                                          horizontal: 7,
+                                          vertical: 4,
+                                        ),
+                                        decoration: BoxDecoration(
+                                          color: pinkLight,
+                                          borderRadius:
+                                              BorderRadius.circular(10),
+                                        ),
+                                        child: Text(
+                                          schedule,
+                                          textAlign: TextAlign.center,
+                                          maxLines: 2,
+                                          overflow: TextOverflow.ellipsis,
+                                          style: const TextStyle(
+                                            color: pinkDark,
+                                            fontSize: 9,
+                                            fontWeight: FontWeight.w700,
+                                            height: 1.2,
+                                          ),
+                                        ),
+                                      ),
                                   ],
                                 ),
                               ),
@@ -1059,28 +1183,38 @@ class _DoctorSectionState extends State<DoctorSection> {
   }
 
   @override
+  void dispose() {
+    _autoSlideTimer?.cancel();
+    _scrollController.dispose();
+    super.dispose();
+  }
+
+  @override
   Widget build(BuildContext context) {
     return FutureBuilder<List<Map<String, dynamic>>>(
       future: _doctorFuture,
       builder: (context, snapshot) {
         if (snapshot.connectionState == ConnectionState.waiting) {
           return const Padding(
-            padding: EdgeInsets.all(25),
-            child: Center(child: CircularProgressIndicator(color: pink)),
+            padding: EdgeInsets.all(20),
+            child: Center(
+              child: CircularProgressIndicator(color: pink),
+            ),
           );
         }
 
         if (snapshot.hasError) {
           return const Padding(
-            padding: EdgeInsets.all(18),
+            padding: EdgeInsets.all(16),
             child: Text('Gagal memuat data dokter.'),
           );
         }
 
         final doctors = snapshot.data ?? [];
+
         if (doctors.isEmpty) {
           return const Padding(
-            padding: EdgeInsets.all(18),
+            padding: EdgeInsets.all(16),
             child: Text('Belum ada data dokter.'),
           );
         }
@@ -1088,13 +1222,64 @@ class _DoctorSectionState extends State<DoctorSection> {
         return Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            _sectionHeading(
-              'Dokter Pilihan',
-              subtitle: 'Ditangani oleh tenaga profesional',
-              onSeeAll: _showAllDoctors,
+            Padding(
+              padding: const EdgeInsets.fromLTRB(18, 4, 18, 12),
+              child: Row(
+                children: [
+                  const Expanded(
+                    child: Text(
+                      'Dokter Pilihan',
+                      style: TextStyle(
+                        color: textDark,
+                        fontSize: 17,
+                        fontWeight: FontWeight.w800,
+                      ),
+                    ),
+                  ),
+                  Material(
+                    color: const Color(0xFFFFE6EE),
+                    borderRadius: BorderRadius.circular(14),
+                    child: InkWell(
+                      onTap: _showAllDoctors,
+                      borderRadius: BorderRadius.circular(14),
+                      child: Container(
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 12,
+                          vertical: 8,
+                        ),
+                        decoration: BoxDecoration(
+                          borderRadius: BorderRadius.circular(14),
+                          border: Border.all(
+                            color: const Color(0xFFF5DFE7),
+                          ),
+                        ),
+                        child: const Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            Text(
+                              'See All',
+                              style: TextStyle(
+                                color: pinkDark,
+                                fontSize: 11,
+                                fontWeight: FontWeight.w800,
+                              ),
+                            ),
+                            SizedBox(width: 4),
+                            Icon(
+                              Icons.arrow_forward_rounded,
+                              color: pinkDark,
+                              size: 14,
+                            ),
+                          ],
+                        ),
+                      ),
+                    ),
+                  ),
+                ],
+              ),
             ),
             SizedBox(
-              height: 232,
+              height: 210,
               child: ScrollConfiguration(
                 behavior: const MaterialScrollBehavior().copyWith(
                   dragDevices: {
@@ -1104,10 +1289,14 @@ class _DoctorSectionState extends State<DoctorSection> {
                   },
                 ),
                 child: ListView.separated(
+                  controller: _scrollController,
+                  primary: false,
                   scrollDirection: Axis.horizontal,
-                  padding: const EdgeInsets.symmetric(horizontal: 18),
+                  physics: const ClampingScrollPhysics(),
+                  padding: const EdgeInsets.symmetric(horizontal: 16),
                   itemCount: doctors.length,
-                  separatorBuilder: (_, __) => const SizedBox(width: 13),
+                  separatorBuilder: (_, __) =>
+                      const SizedBox(width: _cardGap),
                   itemBuilder: (context, index) {
                     final doctor = doctors[index];
                     final photo =
@@ -1116,78 +1305,126 @@ class _DoctorSectionState extends State<DoctorSection> {
                         doctor['jadwal_praktik']?.toString().trim() ?? '';
 
                     return SizedBox(
-                      width: 158,
+                      width: _cardWidth,
                       child: Material(
                         color: Colors.white,
-                        borderRadius: BorderRadius.circular(22),
-                        clipBehavior: Clip.antiAlias,
+                        borderRadius: BorderRadius.circular(17),
                         child: InkWell(
+                          borderRadius: BorderRadius.circular(17),
                           onTap: () => _showDoctorDetail(doctor),
                           child: Container(
-                            padding: const EdgeInsets.all(10),
-                            decoration: _cardDecoration(radius: 22),
+                            padding: const EdgeInsets.all(9),
+                            decoration: BoxDecoration(
+                              borderRadius: BorderRadius.circular(17),
+                              border: Border.all(
+                                color: const Color(0xFFF5DFE7),
+                              ),
+                            ),
                             child: Column(
                               crossAxisAlignment: CrossAxisAlignment.start,
                               children: [
                                 ClipRRect(
-                                  borderRadius: BorderRadius.circular(15),
+                                  borderRadius: BorderRadius.circular(12),
                                   child: Container(
-                                    height: 105,
+                                    height: 72,
                                     width: double.infinity,
-                                    color: blush,
-                                    child: _doctorImage(photo, size: 40),
+                                    color: pinkLight,
+                                    child: photo.startsWith('assets/')
+                                        ? Image.asset(
+                                            photo,
+                                            fit: BoxFit.cover,
+                                            errorBuilder: (_, __, ___) =>
+                                                const Icon(
+                                              Icons.person_rounded,
+                                              size: 40,
+                                              color: pink,
+                                            ),
+                                          )
+                                        : const Icon(
+                                            Icons.person_rounded,
+                                            size: 40,
+                                            color: pink,
+                                          ),
                                   ),
                                 ),
-                                const SizedBox(height: 10),
+                                const SizedBox(height: 7),
                                 Text(
                                   doctor['nama']?.toString() ?? 'Dokter',
                                   maxLines: 1,
                                   overflow: TextOverflow.ellipsis,
                                   style: const TextStyle(
                                     color: textDark,
-                                    fontSize: 12,
+                                    fontSize: 11,
                                     fontWeight: FontWeight.w800,
                                   ),
                                 ),
-                                const SizedBox(height: 5),
+                                const SizedBox(height: 3),
                                 Text(
                                   doctor['spesialisasi']?.toString() ?? '-',
                                   maxLines: 1,
                                   overflow: TextOverflow.ellipsis,
                                   style: const TextStyle(
                                     color: textMuted,
-                                    fontSize: 10,
+                                    fontSize: 9,
                                   ),
+                                ),
+                                const SizedBox(height: 4),
+                                const Row(
+                                  children: [
+                                    Icon(
+                                      Icons.star_rounded,
+                                      color: Color(0xFFFFB547),
+                                      size: 13,
+                                    ),
+                                    SizedBox(width: 3),
+                                    Text(
+                                      '4,9',
+                                      style: TextStyle(
+                                        color: textDark,
+                                        fontSize: 10,
+                                        fontWeight: FontWeight.w800,
+                                      ),
+                                    ),
+                                    Text(
+                                      ' / 5,0',
+                                      style: TextStyle(
+                                        color: textMuted,
+                                        fontSize: 9,
+                                      ),
+                                    ),
+                                  ],
                                 ),
                                 const Spacer(),
                                 Container(
                                   padding: const EdgeInsets.symmetric(
-                                    horizontal: 8,
-                                    vertical: 7,
+                                    horizontal: 6,
+                                    vertical: 4,
                                   ),
                                   decoration: BoxDecoration(
-                                    color: blush,
-                                    borderRadius: BorderRadius.circular(20),
+                                    color: pinkLight,
+                                    borderRadius: BorderRadius.circular(10),
                                   ),
                                   child: Row(
+                                    mainAxisSize: MainAxisSize.min,
                                     children: [
                                       const Icon(
                                         Icons.schedule_rounded,
-                                        size: 12,
                                         color: pinkDark,
+                                        size: 11,
                                       ),
-                                      const SizedBox(width: 5),
-                                      Expanded(
+                                      const SizedBox(width: 3),
+                                      Flexible(
                                         child: Text(
                                           schedule.isEmpty
                                               ? 'Jadwal belum tersedia'
-                                              : schedule.replaceAll('\n', ' '),
-                                          maxLines: 1,
+                                              : schedule,
+                                          maxLines: 2,
                                           overflow: TextOverflow.ellipsis,
                                           style: const TextStyle(
                                             color: pinkDark,
-                                            fontSize: 9,
+                                            fontSize: 8,
                                             fontWeight: FontWeight.w700,
+                                            height: 1.15,
                                           ),
                                         ),
                                       ),
@@ -1216,101 +1453,35 @@ class _DoctorSectionState extends State<DoctorSection> {
 class DoctorDetailSheet extends StatelessWidget {
   final Map<String, dynamic> doctor;
 
-  const DoctorDetailSheet({super.key, required this.doctor});
+  const DoctorDetailSheet({
+    super.key,
+    required this.doctor,
+  });
 
-  @override
-  Widget build(BuildContext context) {
-    final photo = doctor['photo_path']?.toString() ?? '';
+  static const Color wine = Color(0xFF64263D);
+  static const Color wineDark = Color(0xFF421728);
+  static const Color ivory = Color(0xFFFFFAF7);
+  static const Color muted = Color(0xFF967A83);
+  static const Color line = Color(0xFFEFE3E5);
 
-    return SafeArea(
-      child: SingleChildScrollView(
-        padding: const EdgeInsets.fromLTRB(24, 25, 24, 30),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Center(
-              child: Container(
-                padding: const EdgeInsets.all(5),
-                decoration: const BoxDecoration(
-                  color: pinkLight,
-                  shape: BoxShape.circle,
-                ),
-                child: CircleAvatar(
-                  radius: 49,
-                  backgroundColor: blush,
-                  child: ClipOval(
-                    child: SizedBox(
-                      width: 98,
-                      height: 98,
-                      child: _doctorImage(photo, size: 55),
-                    ),
-                  ),
-                ),
-              ),
-            ),
-            const SizedBox(height: 17),
-            Center(
-              child: Text(
-                doctor['nama']?.toString() ?? 'Dokter',
-                textAlign: TextAlign.center,
-                style: _heading(21),
-              ),
-            ),
-            const SizedBox(height: 7),
-            Center(
-              child: Container(
-                padding: const EdgeInsets.symmetric(
-                  horizontal: 13,
-                  vertical: 7,
-                ),
-                decoration: BoxDecoration(
-                  color: pinkLight,
-                  borderRadius: BorderRadius.circular(25),
-                ),
-                child: Text(
-                  doctor['spesialisasi']?.toString() ?? '-',
-                  style: const TextStyle(
-                    color: pinkDark,
-                    fontSize: 12,
-                    fontWeight: FontWeight.w700,
-                  ),
-                ),
-              ),
-            ),
-            const SizedBox(height: 25),
-            _info(Icons.school_outlined, 'Pendidikan',
-                doctor['pendidikan']?.toString() ?? '-'),
-            _info(Icons.work_outline, 'Pengalaman',
-                '${doctor['pengalaman_tahun'] ?? 0} tahun'),
-            _info(Icons.calendar_month_outlined, 'Jadwal praktik',
-                doctor['jadwal_praktik']?.toString() ?? '-'),
-            _info(Icons.info_outline, 'Tentang dokter',
-                doctor['deskripsi']?.toString() ?? '-'),
-          ],
-        ),
-      ),
-    );
-  }
+  Widget _infoRow({
+    required IconData icon,
+    required String title,
+    required String value,
+  }) {
+    final content = value.trim().isEmpty ? '-' : value.trim();
 
-  Widget _info(IconData icon, String title, String value) {
-    return Container(
-      margin: const EdgeInsets.only(bottom: 12),
-      padding: const EdgeInsets.all(13),
-      decoration: _cardDecoration(radius: 17),
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 15),
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Container(
-            width: 40,
-            height: 40,
-            decoration: BoxDecoration(
-              color: blush,
-              borderRadius: BorderRadius.circular(13),
-            ),
-            child: Icon(icon, color: pinkDark, size: 21),
+          Icon(
+            icon,
+            size: 21,
+            color: wine,
           ),
-          const SizedBox(width: 12),
+          const SizedBox(width: 14),
           Expanded(
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
@@ -1318,17 +1489,17 @@ class DoctorDetailSheet extends StatelessWidget {
                 Text(
                   title,
                   style: const TextStyle(
-                    color: textMuted,
-                    fontSize: 11,
+                    color: muted,
+                    fontSize: 12,
                   ),
                 ),
-                const SizedBox(height: 4),
+                const SizedBox(height: 5),
                 Text(
-                  value,
+                  content,
                   style: const TextStyle(
-                    color: textDark,
+                    color: wineDark,
                     fontSize: 13,
-                    height: 1.4,
+                    height: 1.5,
                     fontWeight: FontWeight.w600,
                   ),
                 ),
@@ -1339,7 +1510,251 @@ class DoctorDetailSheet extends StatelessWidget {
       ),
     );
   }
+
+  @override
+  Widget build(BuildContext context) {
+    final photo = doctor['photo_path']?.toString() ?? '';
+    final name = doctor['nama']?.toString() ?? 'Dokter';
+    final specialization =
+        doctor['spesialisasi']?.toString() ?? 'Dokter Profesional';
+    final education = doctor['pendidikan']?.toString() ?? '-';
+    final experience =
+        doctor['pengalaman_tahun']?.toString() ?? '0';
+    final schedule = doctor['jadwal_praktik']?.toString() ?? '-';
+    final description = doctor['deskripsi']?.toString() ?? '';
+
+    return SafeArea(
+      top: false,
+      child: FractionallySizedBox(
+        heightFactor: 0.85,
+        child: Container(
+          decoration: const BoxDecoration(
+            color: ivory,
+            borderRadius: BorderRadius.vertical(
+              top: Radius.circular(24),
+            ),
+          ),
+          child: Column(
+            children: [
+              // Header
+              Padding(
+                padding: const EdgeInsets.fromLTRB(22, 14, 16, 10),
+                child: Row(
+                  children: [
+                    Container(
+                      width: 36,
+                      height: 4,
+                      decoration: BoxDecoration(
+                        color: const Color(0xFFDCC8CE),
+                        borderRadius: BorderRadius.circular(10),
+                      ),
+                    ),
+                    const SizedBox(width: 12),
+                    const Expanded(
+                      child: Text(
+                        'Profil Dokter',
+                        style: TextStyle(
+                          color: wineDark,
+                          fontSize: 16,
+                          fontWeight: FontWeight.w700,
+                        ),
+                      ),
+                    ),
+                    IconButton(
+                      onPressed: () => Navigator.pop(context),
+                      icon: const Icon(Icons.close_rounded),
+                      color: wine,
+                      tooltip: 'Tutup',
+                    ),
+                  ],
+                ),
+              ),
+
+              const Divider(height: 1, color: line),
+
+              // Konten profil
+              Expanded(
+                child: SingleChildScrollView(
+                  physics: const BouncingScrollPhysics(),
+                  padding: const EdgeInsets.fromLTRB(22, 24, 22, 24),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      // Foto dan nama dokter
+                      Center(
+                        child: Column(
+                          children: [
+                            Container(
+                              width: 108,
+                              height: 108,
+                              decoration: const BoxDecoration(
+                                shape: BoxShape.circle,
+                                color: Color(0xFFF4E3E7),
+                              ),
+                              clipBehavior: Clip.antiAlias,
+                              child: _doctorImage(photo, size: 45),
+                            ),
+                            const SizedBox(height: 16),
+                            Text(
+                              name,
+                              textAlign: TextAlign.center,
+                              style: const TextStyle(
+                                color: wineDark,
+                                fontSize: 21,
+                                fontWeight: FontWeight.w800,
+                                height: 1.3,
+                              ),
+                            ),
+                            const SizedBox(height: 7),
+                            Text(
+                              specialization,
+                              textAlign: TextAlign.center,
+                              style: const TextStyle(
+                                color: muted,
+                                fontSize: 13,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+
+                      const SizedBox(height: 28),
+
+                      // Pengalaman
+                      Container(
+                        width: double.infinity,
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 16,
+                          vertical: 14,
+                        ),
+                        decoration: BoxDecoration(
+                          color: const Color(0xFFF5E9EB),
+                          borderRadius: BorderRadius.circular(14),
+                        ),
+                        child: Row(
+                          children: [
+                            const Icon(
+                              Icons.work_outline_rounded,
+                              color: wine,
+                              size: 22,
+                            ),
+                            const SizedBox(width: 12),
+                            const Expanded(
+                              child: Text(
+                                'Pengalaman praktik',
+                                style: TextStyle(
+                                  color: wineDark,
+                                  fontSize: 13,
+                                ),
+                              ),
+                            ),
+                            Text(
+                              '$experience tahun',
+                              style: const TextStyle(
+                                color: wine,
+                                fontSize: 13,
+                                fontWeight: FontWeight.w800,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+
+                      const SizedBox(height: 28),
+
+                      const Text(
+                        'Tentang Dokter',
+                        style: TextStyle(
+                          color: wineDark,
+                          fontSize: 16,
+                          fontWeight: FontWeight.w800,
+                        ),
+                      ),
+                      const SizedBox(height: 10),
+                      Text(
+                        description.trim().isEmpty
+                            ? 'Informasi profil dokter belum tersedia.'
+                            : description.trim(),
+                        style: const TextStyle(
+                          color: muted,
+                          fontSize: 13,
+                          height: 1.8,
+                        ),
+                      ),
+
+                      const SizedBox(height: 26),
+
+                      const Text(
+                        'Informasi',
+                        style: TextStyle(
+                          color: wineDark,
+                          fontSize: 16,
+                          fontWeight: FontWeight.w800,
+                        ),
+                      ),
+
+                      const SizedBox(height: 4),
+
+                      _infoRow(
+                        icon: Icons.school_outlined,
+                        title: 'Pendidikan',
+                        value: education,
+                      ),
+
+                      const Divider(height: 1, color: line),
+
+                      _infoRow(
+                        icon: Icons.calendar_month_outlined,
+                        title: 'Jadwal Praktik',
+                        value: schedule,
+                      ),
+
+                      const SizedBox(height: 10),
+
+                      Container(
+                        width: double.infinity,
+                        padding: const EdgeInsets.all(14),
+                        decoration: BoxDecoration(
+                          color: Colors.white,
+                          border: Border.all(color: line),
+                          borderRadius: BorderRadius.circular(12),
+                        ),
+                        child: const Row(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Icon(
+                              Icons.info_outline_rounded,
+                              color: muted,
+                              size: 18,
+                            ),
+                            SizedBox(width: 10),
+                            Expanded(
+                              child: Text(
+                                'Jadwal praktik dapat berubah. '
+                                'Silakan konfirmasi jadwal saat melakukan '
+                                'pemesanan.',
+                                style: TextStyle(
+                                  color: muted,
+                                  fontSize: 11,
+                                  height: 1.6,
+                                ),
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
 }
+
 
 // ==================== DETAIL TREATMENT ====================
 

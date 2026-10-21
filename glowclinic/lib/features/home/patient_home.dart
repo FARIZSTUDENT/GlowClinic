@@ -29,7 +29,6 @@ class _PH extends State<PatientHome> {
   static const Color background = Color(0xFFFFF7F9);
   static const Color primary = Color(0xFF87364B);
   static const Color lightPurple = Color(0xFFFFE1EA);
-  static const Color lightPink = Color(0xFFFFF0F4);
   static const Color textColor = Color(0xFF59434C);
   static const Color mutedColor = Color(0xFFB08C99);
 

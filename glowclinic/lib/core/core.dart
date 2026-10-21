@@ -223,6 +223,61 @@ final List<Map<String, dynamic>> _doctors = [
     'jadwal_praktik': 'Jumat - Sabtu, 13:00-18:00',
     'photo_path': 'assets/images/rizky.jpg',
   },
+   {
+    'nama': 'dr. Alya Permatasari',
+    'spesialisasi': 'Dermatologi',
+    'branch_id': 1,
+    'pendidikan': 'Spesialis Dermatologi',
+    'pengalaman_tahun': 5,
+    'deskripsi':
+        'Melayani konsultasi kesehatan kulit dan perawatan wajah.',
+    'jadwal_praktik': 'Senin - Selasa, 09:00-14:00',
+    'photo_path': 'assets/images/alya.jpg',
+  },
+  {
+    'nama': 'dr. Dimas Saputra',
+    'spesialisasi': 'Estetika',
+    'branch_id': 1,
+    'pendidikan': 'Kedokteran dan Pelatihan Estetika',
+    'pengalaman_tahun': 6,
+    'deskripsi':
+        'Berfokus pada perawatan estetika dan pemeliharaan kulit.',
+    'jadwal_praktik': 'Selasa - Rabu, 10:00-15:00',
+    'photo_path': 'assets/images/dimas.jpg',
+  },
+  {
+    'nama': 'dr. Shinta Maharani',
+    'spesialisasi': 'Perawatan Kulit',
+    'branch_id': 1,
+    'pendidikan': 'Kedokteran dan Pelatihan Perawatan Kulit',
+    'pengalaman_tahun': 4,
+    'deskripsi':
+        'Melayani pemeriksaan kulit dan rekomendasi perawatan sesuai kebutuhan.',
+    'jadwal_praktik': 'Rabu - Kamis, 09:00-14:00',
+    'photo_path': 'assets/images/shinta.jpg',
+  },
+  {
+    'nama': 'dr. Reza Firmansyah',
+    'spesialisasi': 'Laser Treatment',
+    'branch_id': 1,
+    'pendidikan': 'Kedokteran dan Pelatihan Laser',
+    'pengalaman_tahun': 7,
+    'deskripsi':
+        'Berfokus pada konsultasi dan prosedur perawatan kulit berbasis laser.',
+    'jadwal_praktik': 'Kamis - Jumat, 13:00-18:00',
+    'photo_path': 'assets/images/reza.jpg',
+  },
+  {
+    'nama': 'dr. Bella Anggraini',
+    'spesialisasi': 'Dermatologi',
+    'branch_id': 1,
+    'pendidikan': 'Spesialis Dermatologi',
+    'pengalaman_tahun': 8,
+    'deskripsi':
+        'Melayani konsultasi kesehatan kulit dan perawatan wajah.',
+    'jadwal_praktik': 'Jumat - Sabtu, 09:00-15:00',
+    'photo_path': 'assets/images/bella.jpg',
+  },
 ];
 
 

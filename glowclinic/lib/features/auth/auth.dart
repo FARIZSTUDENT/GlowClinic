@@ -1,29 +1,119 @@
-
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:local_auth/local_auth.dart';
+
 import 'package:glowclinic/core/core.dart';
 import 'package:glowclinic/features/home/patient_home.dart';
 import 'package:glowclinic/features/home/staff_home.dart';
 import 'package:glowclinic/features/notif/inbox.dart';
 import 'package:glowclinic/features/notif/notif.dart';
 
-// Membuat sesi login
+// ============================================================
+// GLOWCLINIC BRAND
+// Luxury skincare - maroon, white, minimal feminine line art
+// ============================================================
+
+const Color glowMaroon = Color(0xFF87364B);
+const Color glowBackground = Color(0xFFFFFDFD);
+const Color glowPink = Color(0xFFF8EDF0);
+const Color glowText = Color(0xFF513B45);
+
+class GlowClinicBrand extends StatelessWidget {
+  final bool compact;
+
+  const GlowClinicBrand({
+    super.key,
+    this.compact = false,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    // Ukuran logo disesuaikan dengan tampilan layar.
+    final double logoSize = compact ? 110.0 : 150.0;
+
+    return Column(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        Image.asset(
+          'assets/images/glowclinic_logo.png',
+          width: logoSize,
+          height: logoSize,
+          fit: BoxFit.contain,
+          errorBuilder: (context, error, stackTrace) {
+            return SizedBox(
+              width: logoSize,
+              height: logoSize,
+              child: const Icon(
+                Icons.image_not_supported_outlined,
+                color: glowMaroon,
+                size: 40,
+              ),
+            );
+          },
+        ),
+
+        const SizedBox(height: 4),
+
+        Text(
+          'GlowClinic',
+          textAlign: TextAlign.center,
+          style: TextStyle(
+            fontFamily: 'Georgia',
+            fontSize: compact ? 30 : 36,
+            fontWeight: FontWeight.w600,
+            letterSpacing: -1.0,
+            color: glowMaroon,
+          ),
+        ),
+
+        const SizedBox(height: 6),
+
+        const Padding(
+          padding: EdgeInsets.symmetric(horizontal: 8),
+          child: Text(
+            'Book Your Dermatologist, Track Your Glow.',
+            textAlign: TextAlign.center,
+            style: TextStyle(
+              fontSize: 11,
+              letterSpacing: 0.25,
+              height: 1.4,
+              color: glowMaroon,
+            ),
+          ),
+        ),
+      ],
+    );
+  }
+}
+// ============================================================
+// MENGELOLA SESI LOGIN
+// ============================================================
+
 Future<void> startSession(int id) async {
   myId = id;
 
-  await store.write(key: 'uid', value: '$id');
+  await store.write(
+    key: 'uid',
+    value: '$id',
+  );
+
   await store.write(
     key: 'exp',
-    value: '${DateTime.now().add(const Duration(hours: 24)).millisecondsSinceEpoch}',
+    value:
+        '${DateTime.now().add(const Duration(hours: 24)).millisecondsSinceEpoch}',
   );
-  await store.write(key: 'tok', value: newSalt());
 
-  // Akun ini diingat agar login berikutnya cukup dengan biometrik.
-  await store.write(key: 'last_uid', value: '$id');
+  await store.write(
+    key: 'tok',
+    value: newSalt(),
+  );
+
+  await store.write(
+    key: 'last_uid',
+    value: '$id',
+  );
 }
 
-// Membaca sesi login dengan penanganan error
 Future<bool> loadSession() async {
   try {
     final u = await store.read(key: 'uid');
@@ -45,53 +135,54 @@ Future<bool> loadSession() async {
 
     myId = userId;
     return true;
-  } catch (e) {
-    // Sesi tidak bisa dibaca atau didekripsi.
+  } catch (_) {
     try {
       await clearSession();
-    } catch (_) {
-      // Penghapusan sesi mungkin gagal jika storage rusak.
-    }
+    } catch (_) {}
 
     myId = null;
     return false;
   }
 }
 
-// Menghapus sesi login
 Future<void> clearSession() async {
   myId = null;
 
-  for (final k in ['uid', 'exp', 'tok']) {
-    await store.delete(key: k);
+  for (final key in ['uid', 'exp', 'tok']) {
+    await store.delete(key: key);
   }
 }
 
-// Mengarahkan pengguna ke halaman sesuai role
-Future<void> goHome(BuildContext c) async {
-  final r = await qry('select role from users where id=?', [myId]);
+Future<void> goHome(BuildContext context) async {
+  final result = await qry(
+    'select role from users where id=?',
+    [myId],
+  );
 
-  if (!c.mounted) return;
+  if (!context.mounted) return;
 
-  if (r.isEmpty) {
+  if (result.isEmpty) {
     try {
       await clearSession();
     } catch (_) {}
 
-    if (!c.mounted) return;
+    if (!context.mounted) return;
 
     Navigator.pushAndRemoveUntil(
-      c,
-      MaterialPageRoute(builder: (_) => const LoginScreen()),
+      context,
+      MaterialPageRoute(
+        builder: (_) => const LoginScreen(),
+      ),
       (_) => false,
     );
+
     return;
   }
 
-  final role = '${r.first['role']}'.trim().toLowerCase();
+  final role = '${result.first['role']}'.trim().toLowerCase();
 
   Navigator.pushAndRemoveUntil(
-    c,
+    context,
     MaterialPageRoute(
       builder: (_) =>
           ['staf', 'staff', 'admin'].contains(role)
@@ -102,7 +193,6 @@ Future<void> goHome(BuildContext c) async {
   );
 }
 
-// Lupakan akun terakhir (untuk "Gunakan akun lain")
 Future<void> forgetAccount() async {
   try {
     await clearSession();
@@ -112,8 +202,7 @@ Future<void> forgetAccount() async {
   }
 }
 
-// Logout
-Future<void> logout(BuildContext c) async {
+Future<void> logout(BuildContext context) async {
   stopNotifWatcher();
 
   try {
@@ -126,16 +215,20 @@ Future<void> logout(BuildContext c) async {
     myId = null;
   }
 
-  if (!c.mounted) return;
+  if (!context.mounted) return;
 
   Navigator.pushAndRemoveUntil(
-    c,
-    MaterialPageRoute(builder: (_) => const Gate()),
+    context,
+    MaterialPageRoute(
+      builder: (_) => const Gate(),
+    ),
     (_) => false,
   );
 }
 
-// ---------- Gate: biometrik wajib, password setelah 3x gagal ----------
+// ============================================================
+// GATE BIOMETRIK
+// ============================================================
 
 class Gate extends StatefulWidget {
   const Gate({super.key});
@@ -145,41 +238,45 @@ class Gate extends StatefulWidget {
 }
 
 class _G extends State<Gate> {
-  static const _maxFails = 3;
-  static const _primary = Color(0xFFD85F89);
-  static const _ink = Color(0xFF513B45);
+  static const int _maxFails = 3;
 
-  final _la = LocalAuthentication();
-  final _pw = TextEditingController();
+  final LocalAuthentication _auth = LocalAuthentication();
+  final TextEditingController _password = TextEditingController();
 
   int? _uid;
-  String _name = '';
   int _fails = 0;
+
+  String _name = '';
+  String? _note;
+  String? _error;
+
   bool _checking = true;
   bool _busy = false;
   bool _askPassword = false;
-  String? _note;
-  String? _err;
 
   @override
   void initState() {
     super.initState();
 
-    WidgetsBinding.instance.addPostFrameCallback((_) => _start());
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _start();
+    });
   }
 
   @override
   void dispose() {
-    _pw.dispose();
+    _password.dispose();
     super.dispose();
   }
 
-  void _login() {
+  void _openLogin() {
     if (!mounted) return;
 
     Navigator.pushReplacement(
       context,
-      MaterialPageRoute(builder: (_) => const LoginScreen()),
+      MaterialPageRoute(
+        builder: (_) => const LoginScreen(),
+      ),
     );
   }
 
@@ -187,32 +284,37 @@ class _G extends State<Gate> {
     int? id;
 
     try {
-      final u = await store.read(key: 'uid') ?? await store.read(key: 'last_uid');
-      id = int.tryParse(u ?? '');
+      final value = await store.read(key: 'uid') ??
+          await store.read(key: 'last_uid');
+
+      id = int.tryParse(value ?? '');
     } catch (_) {
       id = null;
     }
 
     if (id == null) {
-      _login();
+      _openLogin();
       return;
     }
 
-    final rows = await qry('select id, nama from users where id = ?', [id]);
+    final rows = await qry(
+      'select id, nama from users where id=?',
+      [id],
+    );
 
     if (!mounted) return;
 
     if (rows.isEmpty) {
       await forgetAccount();
-      _login();
+      _openLogin();
       return;
     }
 
     bool available = false;
 
     try {
-      available = await _la.isDeviceSupported() &&
-          (await _la.getAvailableBiometrics()).isNotEmpty;
+      available = await _auth.isDeviceSupported() &&
+          (await _auth.getAvailableBiometrics()).isNotEmpty;
     } catch (_) {
       available = false;
     }
@@ -226,8 +328,9 @@ class _G extends State<Gate> {
 
       if (!available) {
         _askPassword = true;
-        _note = 'Biometrik belum tersedia atau belum terdaftar di perangkat '
-            'ini. Masuk dengan password.';
+        _note =
+            'Biometrik belum tersedia atau belum terdaftar. '
+            'Silakan masuk dengan password.';
       }
     });
 
@@ -241,23 +344,23 @@ class _G extends State<Gate> {
 
     setState(() {
       _busy = true;
-      _err = null;
+      _error = null;
     });
 
-    var ok = false;
+    bool authenticated = false;
 
     try {
-      ok = await _la.authenticate(
-        localizedReason: 'Verifikasi sidik jari/wajah untuk masuk',
+      authenticated = await _auth.authenticate(
+        localizedReason: 'Verifikasi untuk masuk ke GlowClinic',
         options: const AuthenticationOptions(
           biometricOnly: true,
           stickyAuth: true,
         ),
       );
 
-      if (!ok) _fails++;
+      if (!authenticated) _fails++;
     } on PlatformException catch (e) {
-      const fatal = [
+      const fatalErrors = [
         'LockedOut',
         'PermanentlyLockedOut',
         'NotAvailable',
@@ -265,14 +368,16 @@ class _G extends State<Gate> {
         'PasscodeNotSet',
       ];
 
-      _fails = fatal.contains(e.code) ? _maxFails : _fails + 1;
+      _fails = fatalErrors.contains(e.code)
+          ? _maxFails
+          : _fails + 1;
     } catch (_) {
       _fails++;
     }
 
     if (!mounted) return;
 
-    if (ok) {
+    if (authenticated) {
       await _enter();
       return;
     }
@@ -282,7 +387,8 @@ class _G extends State<Gate> {
 
       if (_fails >= _maxFails) {
         _askPassword = true;
-        _note = 'Biometrik gagal $_maxFails kali. '
+        _note =
+            'Biometrik gagal $_maxFails kali. '
             'Masukkan password untuk melanjutkan.';
       }
     });
@@ -296,12 +402,12 @@ class _G extends State<Gate> {
 
       await goHome(context);
     } catch (_) {
-      if (mounted) {
-        setState(() {
-          _busy = false;
-          _err = 'Gagal masuk. Coba lagi.';
-        });
-      }
+      if (!mounted) return;
+
+      setState(() {
+        _busy = false;
+        _error = 'Gagal masuk. Silakan coba lagi.';
+      });
     }
   }
 
@@ -310,53 +416,66 @@ class _G extends State<Gate> {
 
     setState(() {
       _busy = true;
-      _err = null;
+      _error = null;
     });
 
     try {
-      final r = await qry('select * from users where id = ?', [_uid]);
+      final rows = await qry(
+        'select * from users where id=?',
+        [_uid],
+      );
 
-      final valid = r.isNotEmpty &&
-          r.first['salt'] != null &&
-          r.first['pass_hash'] != null &&
-          hashPw('${r.first['salt']}', _pw.text) == '${r.first['pass_hash']}';
+      final valid = rows.isNotEmpty &&
+          rows.first['salt'] != null &&
+          rows.first['pass_hash'] != null &&
+          hashPw(
+                '${rows.first['salt']}',
+                _password.text,
+              ) ==
+              '${rows.first['pass_hash']}';
 
       if (!valid) {
-        if (mounted) {
-          setState(() {
-            _busy = false;
-            _err = 'Password salah';
-          });
-        }
+        if (!mounted) return;
+
+        setState(() {
+          _busy = false;
+          _error = 'Password salah.';
+        });
+
         return;
       }
 
       await _enter();
     } catch (_) {
-      if (mounted) {
-        setState(() {
-          _busy = false;
-          _err = 'Gagal memeriksa password. Coba lagi.';
-        });
-      }
+      if (!mounted) return;
+
+      setState(() {
+        _busy = false;
+        _error = 'Gagal memeriksa password. Coba lagi.';
+      });
     }
   }
 
   Future<void> _otherAccount() async {
     await forgetAccount();
-    _login();
+    _openLogin();
   }
 
   @override
-  Widget build(BuildContext c) {
+  Widget build(BuildContext context) {
     if (_checking) {
       return const Scaffold(
-        body: Center(child: CircularProgressIndicator()),
+        backgroundColor: glowBackground,
+        body: Center(
+          child: CircularProgressIndicator(
+            color: glowMaroon,
+          ),
+        ),
       );
     }
 
     return Scaffold(
-      backgroundColor: const Color(0xFFFFF6F8),
+      backgroundColor: glowBackground,
       body: SafeArea(
         child: Center(
           child: SingleChildScrollView(
@@ -367,24 +486,21 @@ class _G extends State<Gate> {
                 mainAxisSize: MainAxisSize.min,
                 crossAxisAlignment: CrossAxisAlignment.stretch,
                 children: [
-                  const Icon(Icons.spa_rounded, size: 52, color: _primary),
+                  const GlowClinicBrand(compact: true),
                   const SizedBox(height: 12),
-                  const Text(
-                    'GlowClinic',
+
+                  Text(
+                    _name.isEmpty
+                        ? 'Selamat datang kembali'
+                        : 'Halo, $_name',
                     textAlign: TextAlign.center,
-                    style: TextStyle(
-                      fontSize: 28,
-                      fontWeight: FontWeight.w800,
-                      color: _ink,
+                    style: const TextStyle(
+                      color: Color(0xFF927783),
                     ),
                   ),
-                  const SizedBox(height: 6),
-                  Text(
-                    _name.isEmpty ? 'Selamat datang kembali' : 'Halo, $_name',
-                    textAlign: TextAlign.center,
-                    style: const TextStyle(color: Color(0xFF927783)),
-                  ),
+
                   const SizedBox(height: 32),
+
                   if (!_askPassword) ...[
                     Center(
                       child: InkWell(
@@ -394,7 +510,7 @@ class _G extends State<Gate> {
                           width: 112,
                           height: 112,
                           decoration: const BoxDecoration(
-                            color: Color(0xFFFFE2EB),
+                            color: glowPink,
                             shape: BoxShape.circle,
                           ),
                           child: _busy
@@ -402,29 +518,34 @@ class _G extends State<Gate> {
                                   padding: EdgeInsets.all(36),
                                   child: CircularProgressIndicator(
                                     strokeWidth: 3,
-                                    color: _primary,
+                                    color: glowMaroon,
                                   ),
                                 )
                               : const Icon(
                                   Icons.fingerprint_rounded,
                                   size: 64,
-                                  color: _primary,
+                                  color: glowMaroon,
                                 ),
                         ),
                       ),
                     ),
+
                     const SizedBox(height: 16),
+
                     const Text(
-                      'Sentuh sensor / pindai wajah untuk masuk',
+                      'Sentuh sensor atau pindai wajah untuk masuk',
                       textAlign: TextAlign.center,
-                      style: TextStyle(color: _ink),
+                      style: TextStyle(color: glowText),
                     ),
+
                     if (_fails > 0) ...[
                       const SizedBox(height: 8),
                       Text(
                         'Percobaan gagal: $_fails dari $_maxFails',
                         textAlign: TextAlign.center,
-                        style: const TextStyle(color: Color(0xFFB4234D)),
+                        style: const TextStyle(
+                          color: Color(0xFFB4234D),
+                        ),
                       ),
                     ],
                   ] else ...[
@@ -443,9 +564,11 @@ class _G extends State<Gate> {
                           ),
                         ),
                       ),
+
                     const SizedBox(height: 16),
+
                     TextField(
-                      controller: _pw,
+                      controller: _password,
                       enabled: !_busy,
                       obscureText: true,
                       autofocus: true,
@@ -453,20 +576,31 @@ class _G extends State<Gate> {
                       onSubmitted: (_) => _submitPassword(),
                       decoration: InputDecoration(
                         labelText: 'Password',
-                        prefixIcon: const Icon(Icons.lock_outline_rounded),
+                        prefixIcon: const Icon(
+                          Icons.lock_outline_rounded,
+                          color: glowMaroon,
+                        ),
                         filled: true,
                         fillColor: Colors.white,
                         border: OutlineInputBorder(
                           borderRadius: BorderRadius.circular(14),
                         ),
+                        focusedBorder: OutlineInputBorder(
+                          borderRadius: BorderRadius.circular(14),
+                          borderSide: const BorderSide(
+                            color: glowMaroon,
+                          ),
+                        ),
                       ),
                     ),
+
                     const SizedBox(height: 14),
+
                     SizedBox(
                       height: 50,
                       child: FilledButton(
                         style: FilledButton.styleFrom(
-                          backgroundColor: _primary,
+                          backgroundColor: glowMaroon,
                           foregroundColor: Colors.white,
                           shape: RoundedRectangleBorder(
                             borderRadius: BorderRadius.circular(14),
@@ -486,20 +620,25 @@ class _G extends State<Gate> {
                       ),
                     ),
                   ],
-                  if (_err != null) ...[
+
+                  if (_error != null) ...[
                     const SizedBox(height: 12),
                     Text(
-                      _err!,
+                      _error!,
                       textAlign: TextAlign.center,
-                      style: const TextStyle(color: Color(0xFFB4234D)),
+                      style: const TextStyle(
+                        color: Color(0xFFB4234D),
+                      ),
                     ),
                   ],
+
                   const SizedBox(height: 20),
+
                   TextButton(
                     onPressed: _busy ? null : _otherAccount,
                     child: const Text(
                       'Gunakan akun lain',
-                      style: TextStyle(color: _primary),
+                      style: TextStyle(color: glowMaroon),
                     ),
                   ),
                 ],
@@ -512,7 +651,9 @@ class _G extends State<Gate> {
   }
 }
 
-// ---------- Login: email -> password / register ----------
+// ============================================================
+// LOGIN DAN REGISTRASI
+// ============================================================
 
 class LoginScreen extends StatefulWidget {
   const LoginScreen({super.key});
@@ -522,11 +663,11 @@ class LoginScreen extends StatefulWidget {
 }
 
 class _LS extends State<LoginScreen> {
-  final em = TextEditingController();
-  final pw = TextEditingController();
-  final nm = TextEditingController();
+  final TextEditingController em = TextEditingController();
+  final TextEditingController pw = TextEditingController();
+  final TextEditingController nm = TextEditingController();
 
-  int step = 0; // 0 email, 1 password, 2 register
+  int step = 0;
   String? err;
   bool busy = false;
 
@@ -542,7 +683,9 @@ class _LS extends State<LoginScreen> {
 
   Future<void> next() async {
     if (!email.contains('@')) {
-      setState(() => err = 'Email tidak valid');
+      setState(() {
+        err = 'Email tidak valid.';
+      });
       return;
     }
 
@@ -552,27 +695,28 @@ class _LS extends State<LoginScreen> {
     });
 
     try {
-      final r = await qry(
-        'select 1 from users where lower(trim(email)) = ?',
+      final rows = await qry(
+        'select 1 from users where lower(trim(email))=?',
         [email],
       );
 
       if (!mounted) return;
 
       setState(() {
-        step = r.isNotEmpty ? 1 : 2;
+        step = rows.isNotEmpty ? 1 : 2;
         err = null;
       });
-    } catch (e) {
-      if (mounted) {
-        setState(() {
-          err =
-              'Tidak dapat memeriksa akun. Pastikan database siap lalu coba lagi.';
-        });
-      }
+    } catch (_) {
+      if (!mounted) return;
+
+      setState(() {
+        err = 'Tidak dapat memeriksa akun. Pastikan database siap.';
+      });
     } finally {
       if (mounted) {
-        setState(() => busy = false);
+        setState(() {
+          busy = false;
+        });
       }
     }
   }
@@ -587,29 +731,30 @@ class _LS extends State<LoginScreen> {
       int id;
 
       if (step == 1) {
-        // Login pengguna yang sudah terdaftar.
-        final r = await qry(
-          'select * from users where lower(trim(email)) = ?',
+        final rows = await qry(
+          'select * from users where lower(trim(email))=?',
           [email],
         );
 
-        if (r.isEmpty ||
-            r.first['salt'] == null ||
-            r.first['pass_hash'] == null ||
-            hashPw('${r.first['salt']}', pw.text) !=
-                '${r.first['pass_hash']}') {
-          throw Exception('Email atau password salah');
+        if (rows.isEmpty ||
+            rows.first['salt'] == null ||
+            rows.first['pass_hash'] == null ||
+            hashPw(
+                  '${rows.first['salt']}',
+                  pw.text,
+                ) !=
+                '${rows.first['pass_hash']}') {
+          throw Exception('Email atau password salah.');
         }
 
-        id = r.first['id'] as int;
+        id = rows.first['id'] as int;
       } else {
-        // Registrasi pasien baru.
         if (nm.text.trim().isEmpty) {
-          throw Exception('Nama wajib diisi');
+          throw Exception('Nama wajib diisi.');
         }
 
         if (pw.text.length < 6) {
-          throw Exception('Password minimal 6 karakter');
+          throw Exception('Password minimal 6 karakter.');
         }
 
         final salt = newSalt();
@@ -629,25 +774,55 @@ class _LS extends State<LoginScreen> {
 
       await goHome(context);
     } catch (e) {
-      if (mounted) {
-        setState(() {
-          err = e.toString().replaceFirst('Exception: ', '');
-        });
-      }
+      if (!mounted) return;
+
+      setState(() {
+        err = e.toString().replaceFirst('Exception: ', '');
+      });
     } finally {
       if (mounted) {
-        setState(() => busy = false);
+        setState(() {
+          busy = false;
+        });
       }
     }
   }
 
-  @override
-  Widget build(BuildContext c) {
-    const primary = Color(0xFFD85F89);
-    const ink = Color(0xFF513B45);
+  InputDecoration _decoration(
+    String label,
+    IconData icon,
+  ) {
+    return InputDecoration(
+      labelText: label,
+      prefixIcon: Icon(
+        icon,
+        color: glowMaroon,
+      ),
+      filled: true,
+      fillColor: const Color(0xFFFFFAFC),
+      border: OutlineInputBorder(
+        borderRadius: BorderRadius.circular(14),
+      ),
+      enabledBorder: OutlineInputBorder(
+        borderRadius: BorderRadius.circular(14),
+        borderSide: const BorderSide(
+          color: Color(0xFFEAD8DE),
+        ),
+      ),
+      focusedBorder: OutlineInputBorder(
+        borderRadius: BorderRadius.circular(14),
+        borderSide: const BorderSide(
+          color: glowMaroon,
+          width: 1.5,
+        ),
+      ),
+    );
+  }
 
+  @override
+  Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: const Color(0xFFFFF6F8),
+      backgroundColor: glowBackground,
       body: SafeArea(
         child: Center(
           child: SingleChildScrollView(
@@ -657,45 +832,16 @@ class _LS extends State<LoginScreen> {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.stretch,
                 children: [
-                  Container(
-                    width: 76,
-                    height: 76,
-                    decoration: BoxDecoration(
-                      color: const Color(0xFFFFE2EB),
-                      borderRadius: BorderRadius.circular(24),
-                    ),
-                    child: const Icon(
-                      Icons.spa_rounded,
-                      size: 42,
-                      color: primary,
-                    ),
-                  ),
-                  const SizedBox(height: 18),
-                  const Text(
-                    'GlowClinic',
-                    style: TextStyle(
-                      fontSize: 32,
-                      fontWeight: FontWeight.w800,
-                      color: ink,
-                      letterSpacing: -0.8,
-                    ),
-                  ),
-                  const SizedBox(height: 5),
-                  const Text(
-                    'Perawatan kulit dimulai dari sini.',
-                    style: TextStyle(
-                      color: Color(0xFF927783),
-                      fontSize: 14,
-                    ),
-                  ),
+                  const GlowClinicBrand(),
                   const SizedBox(height: 28),
+
                   Container(
                     padding: const EdgeInsets.all(22),
                     decoration: BoxDecoration(
                       color: Colors.white,
                       borderRadius: BorderRadius.circular(24),
                       border: Border.all(
-                        color: const Color(0xFFF4DDE5),
+                        color: const Color(0xFFEAD8DE),
                       ),
                       boxShadow: const [
                         BoxShadow(
@@ -717,10 +863,12 @@ class _LS extends State<LoginScreen> {
                           style: const TextStyle(
                             fontSize: 21,
                             fontWeight: FontWeight.w700,
-                            color: ink,
+                            color: glowText,
                           ),
                         ),
+
                         const SizedBox(height: 6),
+
                         Text(
                           step == 0
                               ? 'Masukkan email untuk melanjutkan.'
@@ -732,43 +880,40 @@ class _LS extends State<LoginScreen> {
                             fontSize: 13,
                           ),
                         ),
+
                         const SizedBox(height: 20),
+
                         TextField(
                           controller: em,
                           enabled: step == 0 && !busy,
                           keyboardType: TextInputType.emailAddress,
                           textInputAction: TextInputAction.next,
-                          autofillHints: const [AutofillHints.email],
-                          decoration: InputDecoration(
-                            labelText: 'Email',
-                            prefixIcon: const Icon(Icons.mail_outline_rounded),
-                            filled: true,
-                            fillColor: const Color(0xFFFFFAFC),
-                            border: OutlineInputBorder(
-                              borderRadius: BorderRadius.circular(14),
-                            ),
+                          autofillHints: const [
+                            AutofillHints.email,
+                          ],
+                          decoration: _decoration(
+                            'Email',
+                            Icons.mail_outline_rounded,
                           ),
                         ),
+
                         if (step == 2) ...[
                           const SizedBox(height: 12),
                           TextField(
                             controller: nm,
                             enabled: !busy,
-                            textCapitalization: TextCapitalization.words,
-                            autofillHints: const [AutofillHints.name],
-                            decoration: InputDecoration(
-                              labelText: 'Nama lengkap',
-                              prefixIcon: const Icon(
-                                Icons.person_outline_rounded,
-                              ),
-                              filled: true,
-                              fillColor: const Color(0xFFFFFAFC),
-                              border: OutlineInputBorder(
-                                borderRadius: BorderRadius.circular(14),
-                              ),
+                            textCapitalization:
+                                TextCapitalization.words,
+                            autofillHints: const [
+                              AutofillHints.name,
+                            ],
+                            decoration: _decoration(
+                              'Nama lengkap',
+                              Icons.person_outline_rounded,
                             ),
                           ),
                         ],
+
                         if (step > 0) ...[
                           const SizedBox(height: 12),
                           TextField(
@@ -782,21 +927,15 @@ class _LS extends State<LoginScreen> {
                             onSubmitted: (_) {
                               if (!busy) submit();
                             },
-                            decoration: InputDecoration(
-                              labelText: step == 2
+                            decoration: _decoration(
+                              step == 2
                                   ? 'Buat password (min. 6 karakter)'
                                   : 'Password',
-                              prefixIcon: const Icon(
-                                Icons.lock_outline_rounded,
-                              ),
-                              filled: true,
-                              fillColor: const Color(0xFFFFFAFC),
-                              border: OutlineInputBorder(
-                                borderRadius: BorderRadius.circular(14),
-                              ),
+                              Icons.lock_outline_rounded,
                             ),
                           ),
                         ],
+
                         if (err != null) ...[
                           const SizedBox(height: 12),
                           Container(
@@ -826,12 +965,14 @@ class _LS extends State<LoginScreen> {
                             ),
                           ),
                         ],
+
                         const SizedBox(height: 18),
+
                         SizedBox(
                           height: 52,
                           child: FilledButton(
                             style: FilledButton.styleFrom(
-                              backgroundColor: primary,
+                              backgroundColor: glowMaroon,
                               foregroundColor: Colors.white,
                               shape: RoundedRectangleBorder(
                                 borderRadius: BorderRadius.circular(14),
@@ -861,6 +1002,7 @@ class _LS extends State<LoginScreen> {
                                   ),
                           ),
                         ),
+
                         if (step > 0)
                           TextButton(
                             onPressed: busy
@@ -875,13 +1017,17 @@ class _LS extends State<LoginScreen> {
                                   },
                             child: const Text(
                               'Gunakan email lain',
-                              style: TextStyle(color: primary),
+                              style: TextStyle(
+                                color: glowMaroon,
+                              ),
                             ),
                           ),
                       ],
                     ),
                   ),
+
                   const SizedBox(height: 18),
+
                   const Text(
                     'Akun staf dibuat oleh administrator klinik.',
                     textAlign: TextAlign.center,

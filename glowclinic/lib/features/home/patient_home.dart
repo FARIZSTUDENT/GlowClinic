@@ -1,4 +1,3 @@
-
 import 'package:flutter/material.dart';
 
 import 'package:glowclinic/core/core.dart';
@@ -28,7 +27,7 @@ class _PH extends State<PatientHome> {
   }
 
   static const Color background = Color(0xFFFFF7F9);
-  static const Color primary = Color(0xFFE879A0);
+  static const Color primary = Color(0xFF87364B);
   static const Color lightPurple = Color(0xFFFFE1EA);
   static const Color lightPink = Color(0xFFFFF0F4);
   static const Color textColor = Color(0xFF59434C);
@@ -74,43 +73,82 @@ class _PH extends State<PatientHome> {
 
     return Scaffold(
       backgroundColor: background,
+
       appBar: AppBar(
         backgroundColor: background,
         surfaceTintColor: Colors.transparent,
         elevation: 0,
         scrolledUnderElevation: 0,
-        titleSpacing: 20,
-        title: const Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
+
+        titleSpacing: 16,
+
+        title: Row(
           children: [
-            Text(
-              'GlowClinic',
-              style: TextStyle(
-                color: textColor,
-                fontSize: 23,
-                fontWeight: FontWeight.w800,
-                letterSpacing: -0.5,
-              ),
+            // LOGO GLOWCLINIC
+            Image.asset(
+              'assets/images/glowclinic_logo.png',
+              width: 42,
+              height: 42,
+              fit: BoxFit.contain,
+              errorBuilder: (context, error, stackTrace) {
+                return const SizedBox(
+                  width: 42,
+                  height: 42,
+                  child: Icon(
+                    Icons.spa_outlined,
+                    size: 30,
+                    color: primary,
+                  ),
+                );
+              },
             ),
-            Text(
-              'Your skin, your confidence',
-              style: TextStyle(
-                color: mutedColor,
-                fontSize: 11,
-                fontWeight: FontWeight.w500,
+
+            const SizedBox(width: 8),
+
+            // NAMA BRAND DAN TAGLINE
+            const Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Text(
+                    'GlowClinic',
+                    style: TextStyle(
+                      fontFamily: 'Georgia',
+                      color: textColor,
+                      fontSize: 22,
+                      fontWeight: FontWeight.w700,
+                      letterSpacing: -0.6,
+                      height: 1.15,
+                    ),
+                  ),
+                  SizedBox(height: 3),
+                  Text(
+                    'Book Your Dermatologist, Track Your Glow',
+                    style: TextStyle(
+                      color: mutedColor,
+                      fontSize: 10,
+                      fontWeight: FontWeight.w500,
+                      height: 1.2,
+                    ),
+                  ),
+                ],
               ),
             ),
           ],
         ),
+
         actions: const [
           NotifBell(),
-          SizedBox(width: 6),
+          SizedBox(width: 8),
         ],
       ),
+
       body: IndexedStack(
         index: i,
         children: pages,
       ),
+
       bottomNavigationBar: Container(
         decoration: BoxDecoration(
           color: Colors.white,
@@ -166,8 +204,12 @@ class _PH extends State<PatientHome> {
             selectedIndex: i,
             onDestinationSelected: (value) {
               if (value == i) return;
+
               setState(() => i = value);
-              if (value == 2) bookingRefresh.value++;
+
+              if (value == 2) {
+                bookingRefresh.value++;
+              }
             },
             destinations: destinations,
           ),

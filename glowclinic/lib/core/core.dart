@@ -80,7 +80,9 @@ const _schema = [
 
   "create table treatments(id integer primary key autoincrement, nama text, kategori text, deskripsi text, durasi_menit integer, harga_idr integer)",
 
-  "create table bookings(id integer primary key autoincrement, user_id integer, doctor_id integer, branch_id integer, treatment_id integer, treatment_nama text, waktu_utc text, status text default 'pending', status_bayar text default 'belum_bayar', metode_bayar text, kode_bayar text, total_idr integer, mata_uang text default 'IDR', kurs real default 1.0, total_bayar real, catatan_dokter text, spin_hadiah text, created_at text default current_timestamp)",
+  "create table bookings(id integer primary key autoincrement, user_id integer, doctor_id integer, branch_id integer, treatment_id integer, treatment_nama text, waktu_utc text, durasi_menit integer default 60, status text default 'pending', status_bayar text default 'belum_bayar', metode_bayar text, kode_bayar text, total_idr integer, mata_uang text default 'IDR', kurs real default 1.0, total_bayar real, catatan_dokter text, spin_hadiah text, created_at text default current_timestamp)",
+
+  "create table doctor_schedules(id integer primary key autoincrement, doctor_id integer, branch_id integer, hari integer, jam_mulai text, jam_selesai text, catatan text)",
 
   "create table record_photos(id integer primary key autoincrement, booking_id integer, tipe text, photo_path text, lux real, created_at text default current_timestamp)",
 
@@ -89,6 +91,8 @@ const _schema = [
   "create table notifications(id integer primary key autoincrement, user_id integer, judul text, isi text, tipe text default 'info', booking_id integer, dibaca integer default 0, shown integer default 0, waktu_utc text)",
 
   "create table blocks(id integer primary key autoincrement, idx integer, ts text, data text, prev_hash text, hash text)",
+
+  "create table skin_journals(id integer primary key autoincrement, user_id integer not null, booking_id integer, tanggal text not null, kondisi_kulit text not null, keluhan text, catatan text, produk text, photo_path text, created_at text default current_timestamp, updated_at text default current_timestamp)",
 ];
 
 const _treatments = [
@@ -178,7 +182,7 @@ final List<Map<String, dynamic>> _doctors = [
   {
     'nama': 'dr. Kevin Mahendra',
     'spesialisasi': 'Laser Treatment',
-    'branch_id': 1,
+    'branch_id': 2,
     'pendidikan': 'Kedokteran dan Pelatihan Laser',
     'pengalaman_tahun': 6,
     'deskripsi': 'Berfokus pada prosedur perawatan kulit berbasis laser.',
@@ -188,7 +192,7 @@ final List<Map<String, dynamic>> _doctors = [
   {
     'nama': 'dr. Amanda Larasati',
     'spesialisasi': 'Dermatologi',
-    'branch_id': 1,
+    'branch_id': 2,
     'pendidikan': 'Spesialis Dermatologi',
     'pengalaman_tahun': 9,
     'deskripsi': 'Berfokus pada pemeriksaan dan kesehatan kulit wajah.',
@@ -198,7 +202,7 @@ final List<Map<String, dynamic>> _doctors = [
   {
     'nama': 'dr. Fajar Ramadhan',
     'spesialisasi': 'Estetika',
-    'branch_id': 1,
+    'branch_id': 2,
     'pendidikan': 'Kedokteran dan Pelatihan Estetika',
     'pengalaman_tahun': 5,
     'deskripsi': 'Berfokus pada konsultasi perawatan estetika.',
@@ -208,7 +212,7 @@ final List<Map<String, dynamic>> _doctors = [
   {
     'nama': 'dr. Citra Maharani',
     'spesialisasi': 'Perawatan Kulit',
-    'branch_id': 1,
+    'branch_id': 2,
     'pendidikan': 'Kedokteran dan Pelatihan Perawatan Kulit',
     'pengalaman_tahun': 3,
     'deskripsi': 'Berfokus pada perawatan dan pemeliharaan kulit.',
@@ -218,17 +222,17 @@ final List<Map<String, dynamic>> _doctors = [
   {
     'nama': 'dr. Rizky Ananda',
     'spesialisasi': 'Laser Treatment',
-    'branch_id': 1,
+    'branch_id': 2,
     'pendidikan': 'Kedokteran dan Pelatihan Laser',
     'pengalaman_tahun': 7,
     'deskripsi': 'Berfokus pada prosedur estetika dan perawatan laser.',
     'jadwal_praktik': 'Jumat - Sabtu, 13:00-18:00',
     'photo_path': 'assets/images/rizky.jpg',
   },
-   {
+  {
     'nama': 'dr. Alya Permatasari',
     'spesialisasi': 'Dermatologi',
-    'branch_id': 1,
+    'branch_id': 3,
     'pendidikan': 'Spesialis Dermatologi',
     'pengalaman_tahun': 5,
     'deskripsi':
@@ -239,7 +243,7 @@ final List<Map<String, dynamic>> _doctors = [
   {
     'nama': 'dr. Dimas Saputra',
     'spesialisasi': 'Estetika',
-    'branch_id': 1,
+    'branch_id': 3,
     'pendidikan': 'Kedokteran dan Pelatihan Estetika',
     'pengalaman_tahun': 6,
     'deskripsi':
@@ -250,7 +254,7 @@ final List<Map<String, dynamic>> _doctors = [
   {
     'nama': 'dr. Shinta Maharani',
     'spesialisasi': 'Perawatan Kulit',
-    'branch_id': 1,
+    'branch_id': 3,
     'pendidikan': 'Kedokteran dan Pelatihan Perawatan Kulit',
     'pengalaman_tahun': 4,
     'deskripsi':
@@ -261,7 +265,7 @@ final List<Map<String, dynamic>> _doctors = [
   {
     'nama': 'dr. Reza Firmansyah',
     'spesialisasi': 'Laser Treatment',
-    'branch_id': 1,
+    'branch_id': 3,
     'pendidikan': 'Kedokteran dan Pelatihan Laser',
     'pengalaman_tahun': 7,
     'deskripsi':
@@ -272,7 +276,7 @@ final List<Map<String, dynamic>> _doctors = [
   {
     'nama': 'dr. Bella Anggraini',
     'spesialisasi': 'Dermatologi',
-    'branch_id': 1,
+    'branch_id': 3,
     'pendidikan': 'Spesialis Dermatologi',
     'pengalaman_tahun': 8,
     'deskripsi':
@@ -280,6 +284,101 @@ final List<Map<String, dynamic>> _doctors = [
     'jadwal_praktik': 'Jumat - Sabtu, 09:00-15:00',
     'photo_path': 'assets/images/bella.jpg',
   },
+];
+
+final List<Map<String, dynamic>> _seedDoctorSchedules = [
+  // dr. Rina Aulia (Branch 1: Senin, Selasa, Rabu 09:00-14:00 | Branch 2: Kamis, Jumat 10:00-15:00)
+  {'doctor_nama': 'dr. Rina Aulia, Sp.KK', 'branch_id': 1, 'hari': 1, 'jam_mulai': '09:00', 'jam_selesai': '14:00', 'catatan': 'Senin, 09:00-14:00'},
+  {'doctor_nama': 'dr. Rina Aulia, Sp.KK', 'branch_id': 1, 'hari': 2, 'jam_mulai': '09:00', 'jam_selesai': '14:00', 'catatan': 'Selasa, 09:00-14:00'},
+  {'doctor_nama': 'dr. Rina Aulia, Sp.KK', 'branch_id': 1, 'hari': 3, 'jam_mulai': '09:00', 'jam_selesai': '14:00', 'catatan': 'Rabu, 09:00-14:00'},
+  {'doctor_nama': 'dr. Rina Aulia, Sp.KK', 'branch_id': 2, 'hari': 4, 'jam_mulai': '10:00', 'jam_selesai': '15:00', 'catatan': 'Kamis, 10:00-15:00'},
+  {'doctor_nama': 'dr. Rina Aulia, Sp.KK', 'branch_id': 2, 'hari': 5, 'jam_mulai': '10:00', 'jam_selesai': '15:00', 'catatan': 'Jumat, 10:00-15:00'},
+
+  // dr. Bima Pratama (Branch 1: Kamis, Jumat, Sabtu 10:00-16:00 | Branch 3: Senin, Selasa 09:00-14:00)
+  {'doctor_nama': 'dr. Bima Pratama', 'branch_id': 1, 'hari': 4, 'jam_mulai': '10:00', 'jam_selesai': '16:00', 'catatan': 'Kamis, 10:00-16:00'},
+  {'doctor_nama': 'dr. Bima Pratama', 'branch_id': 1, 'hari': 5, 'jam_mulai': '10:00', 'jam_selesai': '16:00', 'catatan': 'Jumat, 10:00-16:00'},
+  {'doctor_nama': 'dr. Bima Pratama', 'branch_id': 1, 'hari': 6, 'jam_mulai': '10:00', 'jam_selesai': '16:00', 'catatan': 'Sabtu, 10:00-16:00'},
+  {'doctor_nama': 'dr. Bima Pratama', 'branch_id': 3, 'hari': 1, 'jam_mulai': '09:00', 'jam_selesai': '14:00', 'catatan': 'Senin, 09:00-14:00'},
+  {'doctor_nama': 'dr. Bima Pratama', 'branch_id': 3, 'hari': 2, 'jam_mulai': '09:00', 'jam_selesai': '14:00', 'catatan': 'Selasa, 09:00-14:00'},
+
+  // dr. Nadia Putri (Branch 1: Senin, Selasa 10:00-15:00 | Branch 2: Rabu, Kamis 09:00-14:00)
+  {'doctor_nama': 'dr. Nadia Putri', 'branch_id': 1, 'hari': 1, 'jam_mulai': '10:00', 'jam_selesai': '15:00', 'catatan': 'Senin, 10:00-15:00'},
+  {'doctor_nama': 'dr. Nadia Putri', 'branch_id': 1, 'hari': 2, 'jam_mulai': '10:00', 'jam_selesai': '15:00', 'catatan': 'Selasa, 10:00-15:00'},
+  {'doctor_nama': 'dr. Nadia Putri', 'branch_id': 2, 'hari': 3, 'jam_mulai': '09:00', 'jam_selesai': '14:00', 'catatan': 'Rabu, 09:00-14:00'},
+  {'doctor_nama': 'dr. Nadia Putri', 'branch_id': 2, 'hari': 4, 'jam_mulai': '09:00', 'jam_selesai': '14:00', 'catatan': 'Kamis, 09:00-14:00'},
+
+  // dr. Aditya Prakoso (Branch 1: Rabu, Kamis 09:00-14:00 | Branch 3: Jumat, Sabtu 10:00-15:00)
+  {'doctor_nama': 'dr. Aditya Prakoso', 'branch_id': 1, 'hari': 3, 'jam_mulai': '09:00', 'jam_selesai': '14:00', 'catatan': 'Rabu, 09:00-14:00'},
+  {'doctor_nama': 'dr. Aditya Prakoso', 'branch_id': 1, 'hari': 4, 'jam_mulai': '09:00', 'jam_selesai': '14:00', 'catatan': 'Kamis, 09:00-14:00'},
+  {'doctor_nama': 'dr. Aditya Prakoso', 'branch_id': 3, 'hari': 5, 'jam_mulai': '10:00', 'jam_selesai': '15:00', 'catatan': 'Jumat, 10:00-15:00'},
+  {'doctor_nama': 'dr. Aditya Prakoso', 'branch_id': 3, 'hari': 6, 'jam_mulai': '10:00', 'jam_selesai': '15:00', 'catatan': 'Sabtu, 10:00-15:00'},
+
+  // dr. Salsabila Putri (Branch 1: Jumat, Sabtu 10:00-16:00 | Branch 2: Senin, Selasa 10:00-16:00)
+  {'doctor_nama': 'dr. Salsabila Putri', 'branch_id': 1, 'hari': 5, 'jam_mulai': '10:00', 'jam_selesai': '16:00', 'catatan': 'Jumat, 10:00-16:00'},
+  {'doctor_nama': 'dr. Salsabila Putri', 'branch_id': 1, 'hari': 6, 'jam_mulai': '10:00', 'jam_selesai': '16:00', 'catatan': 'Sabtu, 10:00-16:00'},
+  {'doctor_nama': 'dr. Salsabila Putri', 'branch_id': 2, 'hari': 1, 'jam_mulai': '10:00', 'jam_selesai': '16:00', 'catatan': 'Senin, 10:00-16:00'},
+  {'doctor_nama': 'dr. Salsabila Putri', 'branch_id': 2, 'hari': 2, 'jam_mulai': '10:00', 'jam_selesai': '16:00', 'catatan': 'Selasa, 10:00-16:00'},
+
+  // dr. Kevin Mahendra (Branch 2: Senin, Selasa, Rabu 13:00-18:00 | Branch 3: Kamis, Jumat 10:00-15:00)
+  {'doctor_nama': 'dr. Kevin Mahendra', 'branch_id': 2, 'hari': 1, 'jam_mulai': '13:00', 'jam_selesai': '18:00', 'catatan': 'Senin, 13:00-18:00'},
+  {'doctor_nama': 'dr. Kevin Mahendra', 'branch_id': 2, 'hari': 2, 'jam_mulai': '13:00', 'jam_selesai': '18:00', 'catatan': 'Selasa, 13:00-18:00'},
+  {'doctor_nama': 'dr. Kevin Mahendra', 'branch_id': 2, 'hari': 3, 'jam_mulai': '13:00', 'jam_selesai': '18:00', 'catatan': 'Rabu, 13:00-18:00'},
+  {'doctor_nama': 'dr. Kevin Mahendra', 'branch_id': 3, 'hari': 4, 'jam_mulai': '10:00', 'jam_selesai': '15:00', 'catatan': 'Kamis, 10:00-15:00'},
+  {'doctor_nama': 'dr. Kevin Mahendra', 'branch_id': 3, 'hari': 5, 'jam_mulai': '10:00', 'jam_selesai': '15:00', 'catatan': 'Jumat, 10:00-15:00'},
+
+  // dr. Amanda Larasati (Branch 2: Selasa, Rabu, Kamis 09:00-15:00 | Branch 1: Jumat, Sabtu 09:00-14:00)
+  {'doctor_nama': 'dr. Amanda Larasati', 'branch_id': 2, 'hari': 2, 'jam_mulai': '09:00', 'jam_selesai': '15:00', 'catatan': 'Selasa, 09:00-15:00'},
+  {'doctor_nama': 'dr. Amanda Larasati', 'branch_id': 2, 'hari': 3, 'jam_mulai': '09:00', 'jam_selesai': '15:00', 'catatan': 'Rabu, 09:00-15:00'},
+  {'doctor_nama': 'dr. Amanda Larasati', 'branch_id': 2, 'hari': 4, 'jam_mulai': '09:00', 'jam_selesai': '15:00', 'catatan': 'Kamis, 09:00-15:00'},
+  {'doctor_nama': 'dr. Amanda Larasati', 'branch_id': 1, 'hari': 5, 'jam_mulai': '09:00', 'jam_selesai': '14:00', 'catatan': 'Jumat, 09:00-14:00'},
+  {'doctor_nama': 'dr. Amanda Larasati', 'branch_id': 1, 'hari': 6, 'jam_mulai': '09:00', 'jam_selesai': '14:00', 'catatan': 'Sabtu, 09:00-14:00'},
+
+  // dr. Fajar Ramadhan (Branch 2: Kamis, Jumat 10:00-16:00 | Branch 3: Senin, Selasa 10:00-15:00)
+  {'doctor_nama': 'dr. Fajar Ramadhan', 'branch_id': 2, 'hari': 4, 'jam_mulai': '10:00', 'jam_selesai': '16:00', 'catatan': 'Kamis, 10:00-16:00'},
+  {'doctor_nama': 'dr. Fajar Ramadhan', 'branch_id': 2, 'hari': 5, 'jam_mulai': '10:00', 'jam_selesai': '16:00', 'catatan': 'Jumat, 10:00-16:00'},
+  {'doctor_nama': 'dr. Fajar Ramadhan', 'branch_id': 3, 'hari': 1, 'jam_mulai': '10:00', 'jam_selesai': '15:00', 'catatan': 'Senin, 10:00-15:00'},
+  {'doctor_nama': 'dr. Fajar Ramadhan', 'branch_id': 3, 'hari': 2, 'jam_mulai': '10:00', 'jam_selesai': '15:00', 'catatan': 'Selasa, 10:00-15:00'},
+
+  // dr. Citra Maharani (Branch 2: Senin, Selasa 09:00-13:00 | Branch 1: Rabu, Kamis 10:00-15:00)
+  {'doctor_nama': 'dr. Citra Maharani', 'branch_id': 2, 'hari': 1, 'jam_mulai': '09:00', 'jam_selesai': '13:00', 'catatan': 'Senin, 09:00-13:00'},
+  {'doctor_nama': 'dr. Citra Maharani', 'branch_id': 2, 'hari': 2, 'jam_mulai': '09:00', 'jam_selesai': '13:00', 'catatan': 'Selasa, 09:00-13:00'},
+  {'doctor_nama': 'dr. Citra Maharani', 'branch_id': 1, 'hari': 3, 'jam_mulai': '10:00', 'jam_selesai': '15:00', 'catatan': 'Rabu, 10:00-15:00'},
+  {'doctor_nama': 'dr. Citra Maharani', 'branch_id': 1, 'hari': 4, 'jam_mulai': '10:00', 'jam_selesai': '15:00', 'catatan': 'Kamis, 10:00-15:00'},
+
+  // dr. Rizky Ananda (Branch 2: Jumat, Sabtu 13:00-18:00 | Branch 3: Rabu, Kamis 13:00-17:00)
+  {'doctor_nama': 'dr. Rizky Ananda', 'branch_id': 2, 'hari': 5, 'jam_mulai': '13:00', 'jam_selesai': '18:00', 'catatan': 'Jumat, 13:00-18:00'},
+  {'doctor_nama': 'dr. Rizky Ananda', 'branch_id': 2, 'hari': 6, 'jam_mulai': '13:00', 'jam_selesai': '18:00', 'catatan': 'Sabtu, 13:00-18:00'},
+  {'doctor_nama': 'dr. Rizky Ananda', 'branch_id': 3, 'hari': 3, 'jam_mulai': '13:00', 'jam_selesai': '17:00', 'catatan': 'Rabu, 13:00-17:00'},
+  {'doctor_nama': 'dr. Rizky Ananda', 'branch_id': 3, 'hari': 4, 'jam_mulai': '13:00', 'jam_selesai': '17:00', 'catatan': 'Kamis, 13:00-17:00'},
+
+  // dr. Alya Permatasari (Branch 3: Senin, Selasa 09:00-14:00 | Branch 1: Rabu, Kamis 09:00-14:00)
+  {'doctor_nama': 'dr. Alya Permatasari', 'branch_id': 3, 'hari': 1, 'jam_mulai': '09:00', 'jam_selesai': '14:00', 'catatan': 'Senin, 09:00-14:00'},
+  {'doctor_nama': 'dr. Alya Permatasari', 'branch_id': 3, 'hari': 2, 'jam_mulai': '09:00', 'jam_selesai': '14:00', 'catatan': 'Selasa, 09:00-14:00'},
+  {'doctor_nama': 'dr. Alya Permatasari', 'branch_id': 1, 'hari': 3, 'jam_mulai': '09:00', 'jam_selesai': '14:00', 'catatan': 'Rabu, 09:00-14:00'},
+  {'doctor_nama': 'dr. Alya Permatasari', 'branch_id': 1, 'hari': 4, 'jam_mulai': '09:00', 'jam_selesai': '14:00', 'catatan': 'Kamis, 09:00-14:00'},
+
+  // dr. Dimas Saputra (Branch 3: Selasa, Rabu 10:00-15:00 | Branch 2: Jumat, Sabtu 10:00-15:00)
+  {'doctor_nama': 'dr. Dimas Saputra', 'branch_id': 3, 'hari': 2, 'jam_mulai': '10:00', 'jam_selesai': '15:00', 'catatan': 'Selasa, 10:00-15:00'},
+  {'doctor_nama': 'dr. Dimas Saputra', 'branch_id': 3, 'hari': 3, 'jam_mulai': '10:00', 'jam_selesai': '15:00', 'catatan': 'Rabu, 10:00-15:00'},
+  {'doctor_nama': 'dr. Dimas Saputra', 'branch_id': 2, 'hari': 5, 'jam_mulai': '10:00', 'jam_selesai': '15:00', 'catatan': 'Jumat, 10:00-15:00'},
+  {'doctor_nama': 'dr. Dimas Saputra', 'branch_id': 2, 'hari': 6, 'jam_mulai': '10:00', 'jam_selesai': '15:00', 'catatan': 'Sabtu, 10:00-15:00'},
+
+  // dr. Shinta Maharani (Branch 3: Rabu, Kamis 09:00-14:00 | Branch 1: Sabtu 10:00-15:00)
+  {'doctor_nama': 'dr. Shinta Maharani', 'branch_id': 3, 'hari': 3, 'jam_mulai': '09:00', 'jam_selesai': '14:00', 'catatan': 'Rabu, 09:00-14:00'},
+  {'doctor_nama': 'dr. Shinta Maharani', 'branch_id': 3, 'hari': 4, 'jam_mulai': '09:00', 'jam_selesai': '14:00', 'catatan': 'Kamis, 09:00-14:00'},
+  {'doctor_nama': 'dr. Shinta Maharani', 'branch_id': 1, 'hari': 6, 'jam_mulai': '10:00', 'jam_selesai': '15:00', 'catatan': 'Sabtu, 10:00-15:00'},
+
+  // dr. Reza Firmansyah (Branch 3: Kamis, Jumat 13:00-18:00 | Branch 2: Senin, Selasa 13:00-17:00)
+  {'doctor_nama': 'dr. Reza Firmansyah', 'branch_id': 3, 'hari': 4, 'jam_mulai': '13:00', 'jam_selesai': '18:00', 'catatan': 'Kamis, 13:00-18:00'},
+  {'doctor_nama': 'dr. Reza Firmansyah', 'branch_id': 3, 'hari': 5, 'jam_mulai': '13:00', 'jam_selesai': '18:00', 'catatan': 'Jumat, 13:00-18:00'},
+  {'doctor_nama': 'dr. Reza Firmansyah', 'branch_id': 2, 'hari': 1, 'jam_mulai': '13:00', 'jam_selesai': '17:00', 'catatan': 'Senin, 13:00-17:00'},
+  {'doctor_nama': 'dr. Reza Firmansyah', 'branch_id': 2, 'hari': 2, 'jam_mulai': '13:00', 'jam_selesai': '17:00', 'catatan': 'Selasa, 13:00-17:00'},
+
+  // dr. Bella Anggraini (Branch 3: Jumat, Sabtu 09:00-15:00 | Branch 2: Rabu, Kamis 09:00-14:00)
+  {'doctor_nama': 'dr. Bella Anggraini', 'branch_id': 3, 'hari': 5, 'jam_mulai': '09:00', 'jam_selesai': '15:00', 'catatan': 'Jumat, 09:00-15:00'},
+  {'doctor_nama': 'dr. Bella Anggraini', 'branch_id': 3, 'hari': 6, 'jam_mulai': '09:00', 'jam_selesai': '15:00', 'catatan': 'Sabtu, 09:00-15:00'},
+  {'doctor_nama': 'dr. Bella Anggraini', 'branch_id': 2, 'hari': 3, 'jam_mulai': '09:00', 'jam_selesai': '14:00', 'catatan': 'Rabu, 09:00-14:00'},
+  {'doctor_nama': 'dr. Bella Anggraini', 'branch_id': 2, 'hari': 4, 'jam_mulai': '09:00', 'jam_selesai': '14:00', 'catatan': 'Kamis, 09:00-14:00'},
 ];
 
 
@@ -291,7 +390,7 @@ Future<void> initDb() async {
 
   db = await openDatabase(
     path,
-    version: 5,
+    version: 7,
     onCreate: (database, version) async {
       for (final sql in _schema) {
         await database.execute(sql);
@@ -345,6 +444,43 @@ Future<void> initDb() async {
         try {
           await database.execute(
             'ALTER TABLE bookings ADD COLUMN total_bayar REAL',
+          );
+        } catch (_) {}
+      }
+      if (oldVersion < 6) {
+        try {
+          await database.execute(
+            'CREATE TABLE IF NOT EXISTS doctor_schedules('
+            'id integer primary key autoincrement, '
+            'doctor_id integer, '
+            'branch_id integer, '
+            'hari integer, '
+            'jam_mulai text, '
+            'jam_selesai text, '
+            'catatan text)',
+          );
+        } catch (_) {}
+        try {
+          await database.execute(
+            'ALTER TABLE bookings ADD COLUMN durasi_menit INTEGER DEFAULT 60',
+          );
+        } catch (_) {}
+      }
+      if (oldVersion < 7) {
+        try {
+          await database.execute(
+            'CREATE TABLE IF NOT EXISTS skin_journals('
+            'id INTEGER PRIMARY KEY AUTOINCREMENT, '
+            'user_id INTEGER NOT NULL, '
+            'booking_id INTEGER, '
+            'tanggal TEXT NOT NULL, '
+            'kondisi_kulit TEXT NOT NULL, '
+            'keluhan TEXT, '
+            'catatan TEXT, '
+            'produk TEXT, '
+            'photo_path TEXT, '
+            'created_at TEXT DEFAULT CURRENT_TIMESTAMP, '
+            'updated_at TEXT DEFAULT CURRENT_TIMESTAMP)',
           );
         } catch (_) {}
       }
@@ -429,12 +565,41 @@ Future<void> initDb() async {
     }
   }
 
+  // Memasukkan jadwal praktik dokter jika tabel belum memiliki data.
+  final schedulesCount = await db.query(
+    'doctor_schedules',
+    columns: ['id'],
+    limit: 1,
+  );
+  if (schedulesCount.isEmpty) {
+    for (final s in _seedDoctorSchedules) {
+      final docName = s['doctor_nama'] as String;
+      final docRow = await db.query(
+        'doctors',
+        columns: ['id'],
+        where: 'nama = ?',
+        whereArgs: [docName],
+        limit: 1,
+      );
+      if (docRow.isNotEmpty) {
+        final doctorId = docRow.first['id'] as int;
+        await db.insert('doctor_schedules', {
+          'doctor_id': doctorId,
+          'branch_id': s['branch_id'],
+          'hari': s['hari'],
+          'jam_mulai': s['jam_mulai'],
+          'jam_selesai': s['jam_selesai'],
+          'catatan': s['catatan'],
+        });
+      }
+    }
+  }
+
   // Akun staf demo (login tidak lagi membuat akun pasien baru).
   final staff = await db.query(
     'users',
-    where: 'lower(trim(email)) = ?',
-    whereArgs: [kStaffEmail],
-    limit: 1,
+    where: 'lower(trim(email)) in (?, ?)',
+    whereArgs: [kStaffEmail, 'staff@glowclinic.com'],
   );
 
   if (staff.isEmpty) {
@@ -446,13 +611,26 @@ Future<void> initDb() async {
       'salt': salt,
       'pass_hash': hashPw(salt, kStaffPassword),
     });
-  } else if ('${staff.first['role']}'.trim().toLowerCase() != 'staf') {
-    await db.update(
-      'users',
-      {'role': 'staf'},
-      where: 'id = ?',
-      whereArgs: [staff.first['id']],
-    );
+    debugPrint('[DB] Akun staf demo baru dibuat ($kStaffEmail).');
+  } else {
+    // Sinkronkan hash password akun staf demo agar selalu konsisten dengan kStaffPassword
+    // mengatasi masalah database lama di HP fisik yang masih menyimpan hash password lama
+    for (final s in staff) {
+      final salt = (s['salt']?.toString().isNotEmpty ?? false)
+          ? s['salt'].toString()
+          : newSalt();
+      await db.update(
+        'users',
+        {
+          'role': 'staf',
+          'salt': salt,
+          'pass_hash': hashPw(salt, kStaffPassword),
+        },
+        where: 'id = ?',
+        whereArgs: [s['id']],
+      );
+      debugPrint('[DB] Akun staf demo disinkronkan (${s['email']}).');
+    }
   }
 }
 

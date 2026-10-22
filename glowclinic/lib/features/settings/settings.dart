@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:glowclinic/core/core.dart';
 import 'package:glowclinic/features/notif/notif.dart';
 import 'package:glowclinic/features/lbs/lbs.dart';
+import 'package:glowclinic/features/booking/timezone_screen.dart';
 
 class SettingsScreen extends StatefulWidget {
   const SettingsScreen({super.key});
@@ -86,6 +87,23 @@ class _ST extends State<SettingsScreen> {
             leading: const Icon(Icons.notifications),
             title: const Text('Tes notifikasi (5 detik)'),
             onTap: testNotification,
+          ),
+          const Divider(),
+          ListTile(
+            leading: const Icon(Icons.schedule_rounded),
+            title: const Text('Konversi Waktu'),
+            subtitle: const Text(
+              'WIB, WITA, WIT, dan London (dengan DST otomatis)',
+            ),
+            trailing: const Icon(Icons.chevron_right),
+            onTap: () {
+              Navigator.push(
+                context,
+                MaterialPageRoute(
+                  builder: (_) => const TimeZoneConversionScreen(),
+                ),
+              );
+            },
           ),
           const Divider(),
           ValueListenableBuilder<String>(

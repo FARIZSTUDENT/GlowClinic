@@ -274,7 +274,11 @@ class _BookingListState extends State<BookingList> {
         case 'foto':
           await Navigator.push(
             actionContext,
-            MaterialPageRoute(builder: (_) => PhotoScreen(booking)),
+            MaterialPageRoute(
+              builder: (_) => SkinJournalScreen(
+                booking: Map<String, dynamic>.from(booking),
+              ),
+            ),
           );
           break;
 

@@ -35,6 +35,8 @@ class _BookingScreenState extends State<BookingScreen> {
 
   // Step 4: Dokter
   List<Map<String, dynamic>> doctors = [];
+  // Daftar dokter yang praktik pada tanggal/cabang terpilih sebelum filter jam.
+  List<Map<String, dynamic>> allDoctorsForDate = [];
   int? selectedDoctorId;
   DoctorDailySchedule? doctorSchedule;
 
@@ -189,6 +191,7 @@ class _BookingScreenState extends State<BookingScreen> {
     setState(() {
       selectedTreatmentId = treatmentId;
       selectedSlot = null;
+      doctors = List<Map<String, dynamic>>.from(allDoctorsForDate);
     });
 
     // Durasi treatment berubah -> hitung ulang slot waktu
@@ -215,6 +218,7 @@ class _BookingScreenState extends State<BookingScreen> {
     if (branchId == null) {
       setState(() {
         doctors = [];
+        allDoctorsForDate = [];
         selectedDoctorId = null;
         doctorSchedule = null;
         slots = [];
@@ -237,7 +241,8 @@ class _BookingScreenState extends State<BookingScreen> {
       if (!mounted) return;
 
       setState(() {
-        doctors = result;
+        allDoctorsForDate = List<Map<String, dynamic>>.from(result);
+        doctors = List<Map<String, dynamic>>.from(result);
         loadingDoctors = false;
 
         // Cek apakah dokter yang dipilih sebelumnya masih ada di daftar hari ini
@@ -277,10 +282,73 @@ class _BookingScreenState extends State<BookingScreen> {
 
     setState(() {
       selectedDoctorId = doctorId;
-      selectedSlot = null;
+      // Pertahankan jam yang dipilih; _loadSlots akan mengecek apakah
+      // dokter baru juga masih tersedia pada jam yang sama.
     });
 
     await _loadSlots();
+  }
+
+  /// Setelah pasien memilih jam, tampilkan hanya dokter di cabang dan tanggal
+  /// yang sama yang juga memiliki slot kosong pada jam tersebut.
+  Future<void> _filterDoctorsForSelectedTime(BookingSlot slot) async {
+    final branchId = selectedBranchId;
+    if (branchId == null || allDoctorsForDate.isEmpty) return;
+
+    final requestedDate = selectedDate;
+    final requestedTreatmentId = selectedTreatmentId;
+    final duration = (currentTreatment['durasi_menit'] as num?)?.toInt() ?? 60;
+    final candidates = List<Map<String, dynamic>>.from(allDoctorsForDate);
+    final availableDoctors = <Map<String, dynamic>>[];
+
+    for (final doctor in candidates) {
+      final doctorId = (doctor['id'] as num?)?.toInt();
+      if (doctorId == null) continue;
+
+      try {
+        final candidateSlots = await DoctorScheduleService.calculateAvailableSlots(
+          doctorId: doctorId,
+          branchId: branchId,
+          date: requestedDate,
+          treatmentDurationMinutes: duration,
+          selectedZone: selectedZone,
+        );
+        final isAvailable = candidateSlots.any(
+          (candidate) =>
+              candidate.timeUtc == slot.timeUtc && candidate.isAvailable,
+        );
+        if (isAvailable) availableDoctors.add(doctor);
+      } catch (e) {
+        debugPrint('[BOOKING] Gagal memeriksa slot dokter $doctorId: $e');
+      }
+    }
+
+    if (!mounted ||
+        selectedBranchId != branchId ||
+        selectedDate != requestedDate ||
+        selectedSlot?.timeUtc != slot.timeUtc ||
+        selectedTreatmentId != requestedTreatmentId) {
+      return;
+    }
+
+    setState(() {
+      doctors = availableDoctors;
+      if (!doctors.any((d) => (d['id'] as num?)?.toInt() == selectedDoctorId)) {
+        selectedDoctorId = doctors.isNotEmpty
+            ? (doctors.first['id'] as num?)?.toInt()
+            : null;
+        doctorSchedule = null;
+        slots = [];
+      }
+    });
+
+    // Jika dokter aktif berubah, muat ulang slotnya sambil mempertahankan
+    // pilihan jam bila jam tersebut tetap tersedia.
+    if (selectedDoctorId != null &&
+        !slots.any((candidate) =>
+            candidate.timeUtc == slot.timeUtc && candidate.isAvailable)) {
+      await _loadSlots();
+    }
   }
 
   Future<void> _loadSlots() async {
@@ -330,6 +398,9 @@ class _BookingScreenState extends State<BookingScreen> {
             (s) => s.timeUtc == selectedSlot!.timeUtc && s.isAvailable,
           );
           selectedSlot = matches.isNotEmpty ? matches.first : null;
+        }
+        if (selectedSlot == null) {
+          doctors = List<Map<String, dynamic>>.from(allDoctorsForDate);
         }
       });
     } catch (_) {
@@ -1493,10 +1564,11 @@ class _BookingScreenState extends State<BookingScreen> {
                 return InkWell(
                   onTap: (!isAvailable || saving)
                       ? null
-                      : () {
+                      : () async {
                           setState(() {
                             selectedSlot = slot;
                           });
+                          await _filterDoctorsForSelectedTime(slot);
                         },
                   borderRadius: BorderRadius.circular(12),
                   child: Container(

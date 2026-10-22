@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:glowclinic/core/core.dart';
+import 'package:glowclinic/features/notif/notif.dart';
 
 class FeedbackScreen extends StatefulWidget {
   final Map b;
@@ -71,6 +72,12 @@ class _FB extends State<FeedbackScreen> {
         'kesan': kesan.text.trim(),
         'saran': saran.text.trim(),
       });
+      final parsedBookingId = bookingId is int
+          ? bookingId
+          : int.tryParse('$bookingId');
+      if (parsedBookingId != null) {
+        await syncAftercareReminders(parsedBookingId, userId: myId);
+      }
 
       if (!mounted) return;
 

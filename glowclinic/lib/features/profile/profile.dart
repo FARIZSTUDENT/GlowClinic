@@ -223,80 +223,198 @@ class _PF extends State<ProfileScreen> {
     final photoPath = u['photo_path']?.toString();
 
     return ListView(
-      padding: const EdgeInsets.all(16),
+      padding: const EdgeInsets.fromLTRB(16, 18, 16, 28),
       children: [
-        Center(
-          child: GestureDetector(
-            onTap: pickingPhoto ? null : photo,
-            child: CircleAvatar(
-              radius: 50,
-              backgroundImage:
-                  photoPath != null &&
-                      photoPath.isNotEmpty &&
-                      File(photoPath).existsSync()
-                  ? FileImage(File(photoPath))
-                  : null,
-              child: pickingPhoto
-                  ? const CircularProgressIndicator()
-                  : photoPath == null || photoPath.isEmpty
-                  ? const Icon(Icons.add_a_photo)
-                  : null,
-            ),
+        Container(
+          padding: const EdgeInsets.fromLTRB(20, 22, 20, 20),
+          decoration: BoxDecoration(
+            color: const Color(0xFF641F35),
+            borderRadius: BorderRadius.circular(24),
+            boxShadow: [
+              BoxShadow(
+                color: const Color(0xFF641F35).withValues(alpha: 0.16),
+                blurRadius: 20,
+                offset: const Offset(0, 9),
+              ),
+            ],
+          ),
+          child: Row(
+            children: [
+              GestureDetector(
+                onTap: pickingPhoto ? null : photo,
+                child: CircleAvatar(
+                  radius: 38,
+                  backgroundColor: Colors.white.withValues(alpha: 0.15),
+                  backgroundImage: photoPath != null &&
+                          photoPath.isNotEmpty &&
+                          File(photoPath).existsSync()
+                      ? FileImage(File(photoPath))
+                      : null,
+                  child: pickingPhoto
+                      ? const CircularProgressIndicator(color: Colors.white)
+                      : photoPath == null || photoPath.isEmpty
+                          ? const Icon(
+                              Icons.add_a_photo_outlined,
+                              color: Colors.white,
+                            )
+                          : null,
+                ),
+              ),
+              const SizedBox(width: 16),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    const Text(
+                      'Profil kamu',
+                      style: TextStyle(
+                        color: Colors.white,
+                        fontSize: 20,
+                        fontWeight: FontWeight.w700,
+                      ),
+                    ),
+                    const SizedBox(height: 5),
+                    Text(
+                      'Kelola data untuk pengalaman treatment yang lebih personal.',
+                      style: TextStyle(
+                        color: Colors.white.withValues(alpha: 0.72),
+                        fontSize: 12,
+                        height: 1.35,
+                      ),
+                    ),
+                    const SizedBox(height: 12),
+                    Container(
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 10,
+                        vertical: 6,
+                      ),
+                      decoration: BoxDecoration(
+                        color: Colors.white.withValues(alpha: 0.12),
+                        borderRadius: BorderRadius.circular(20),
+                      ),
+                      child: Text(
+                        '✦  ${u['poin'] ?? 0} poin loyalitas',
+                        style: const TextStyle(
+                          color: Colors.white,
+                          fontSize: 11,
+                          fontWeight: FontWeight.w700,
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ),
+        ),
+        const SizedBox(height: 22),
+        const Text(
+          'Informasi pribadi',
+          style: TextStyle(
+            color: Color(0xFF49343B),
+            fontSize: 17,
+            fontWeight: FontWeight.w700,
           ),
         ),
         const SizedBox(height: 12),
-        Center(child: Text('Poin loyalitas: ${u['poin'] ?? 0}')),
-        const SizedBox(height: 16),
         TextField(
           controller: nama,
-          decoration: const InputDecoration(labelText: 'Nama'),
+          decoration: const InputDecoration(
+            labelText: 'Nama lengkap',
+            prefixIcon: Icon(Icons.person_outline_rounded),
+          ),
         ),
+        const SizedBox(height: 12),
         TextField(
           controller: hp,
           keyboardType: TextInputType.phone,
-          decoration: const InputDecoration(labelText: 'No. HP'),
+          decoration: const InputDecoration(
+            labelText: 'Nomor telepon',
+            prefixIcon: Icon(Icons.phone_outlined),
+          ),
         ),
+        const SizedBox(height: 22),
+        const Text(
+          'Preferensi kulit',
+          style: TextStyle(
+            color: Color(0xFF49343B),
+            fontSize: 17,
+            fontWeight: FontWeight.w700,
+          ),
+        ),
+        const SizedBox(height: 12),
         TextField(
           controller: kulit,
           decoration: const InputDecoration(
-            labelText: 'Tipe kulit (berminyak/kering/sensitif)',
+            labelText: 'Tipe kulit',
+            hintText: 'Berminyak, kering, kombinasi, sensitif',
+            prefixIcon: Icon(Icons.spa_outlined),
           ),
         ),
+        const SizedBox(height: 12),
         TextField(
           controller: alergi,
-          decoration: const InputDecoration(labelText: 'Alergi'),
+          maxLines: 2,
+          decoration: const InputDecoration(
+            labelText: 'Alergi atau sensitivitas',
+            prefixIcon: Icon(Icons.health_and_safety_outlined),
+          ),
         ),
-        const SizedBox(height: 16),
+        const SizedBox(height: 20),
         FilledButton(
           onPressed: saving ? null : save,
           child: saving
               ? const SizedBox(
                   height: 20,
                   width: 20,
-                  child: CircularProgressIndicator(strokeWidth: 2),
+                  child: CircularProgressIndicator(
+                    color: Colors.white,
+                    strokeWidth: 2,
+                  ),
                 )
-              : const Text('Simpan'),
+              : const Text('Simpan perubahan'),
         ),
-        const SizedBox(height: 24),
-        const Divider(),
-        ListTile(
-          leading: const Icon(Icons.settings_outlined),
-          title: const Text('Pengaturan'),
-          trailing: const Icon(Icons.chevron_right),
-          onTap: () {
-            Navigator.push(
-              context,
-              MaterialPageRoute(builder: (_) => const SettingsScreen()),
-            );
-          },
-        ),
-        ListTile(
-          leading: const Icon(Icons.logout_rounded, color: Color(0xFFD85F89)),
-          title: const Text(
-            'Keluar',
-            style: TextStyle(color: Color(0xFFD85F89)),
+        const SizedBox(height: 28),
+        const Text(
+          'Akun',
+          style: TextStyle(
+            color: Color(0xFF49343B),
+            fontSize: 17,
+            fontWeight: FontWeight.w700,
           ),
-          onTap: confirmLogout,
+        ),
+        const SizedBox(height: 8),
+        Card(
+          child: Column(
+            children: [
+              ListTile(
+                leading: const Icon(Icons.settings_outlined),
+                title: const Text('Pengaturan'),
+                subtitle: const Text('Notifikasi, lokasi, mata uang'),
+                trailing: const Icon(Icons.chevron_right),
+                onTap: () {
+                  Navigator.push(
+                    context,
+                    MaterialPageRoute(
+                      builder: (_) => const SettingsScreen(),
+                    ),
+                  );
+                },
+              ),
+              const Divider(height: 1, indent: 20, endIndent: 20),
+              ListTile(
+                leading: const Icon(
+                  Icons.logout_rounded,
+                  color: Color(0xFFD85F89),
+                ),
+                title: const Text(
+                  'Keluar dari akun',
+                  style: TextStyle(color: Color(0xFFD85F89)),
+                ),
+                onTap: confirmLogout,
+              ),
+            ],
+          ),
         ),
       ],
     );

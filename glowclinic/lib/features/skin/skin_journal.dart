@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:glowclinic/core/core.dart';
+import 'package:glowclinic/features/notif/notif.dart';
 
 // Definisi warna konsisten tema GlowClinic
 const Color _primary = Color(0xFF87364B);
@@ -933,6 +934,14 @@ class _SkinJournalFormScreenState extends State<SkinJournalFormScreen> {
           'created_at': DateTime.now().toIso8601String(),
           'updated_at': DateTime.now().toIso8601String(),
         });
+        if (effectiveBookingId != null) {
+          final bookingId = effectiveBookingId is int
+              ? effectiveBookingId
+              : int.tryParse('$effectiveBookingId');
+          if (bookingId != null) {
+            await syncAftercareReminders(bookingId, userId: uid);
+          }
+        }
 
         if (!mounted) return;
         snack(context, 'Jurnal kulit berhasil disimpan! ✨');

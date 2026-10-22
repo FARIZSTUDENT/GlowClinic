@@ -145,7 +145,11 @@ class _BookingListState extends State<BookingList> {
     try {
       final updated = await db.update(
         'bookings',
-        {'status': status},
+        {
+          'status': status,
+          if (status == 'done')
+            'completed_at': DateTime.now().toUtc().toIso8601String(),
+        },
         where: 'id = ? AND status = ?',
         whereArgs: [id, oldStatus],
       );
@@ -162,6 +166,17 @@ class _BookingListState extends State<BookingList> {
           await Chain.add('booking:$id:Treatment selesai');
         } catch (e) {
           debugPrint('Gagal mencatat blockchain: $e');
+        }
+        try {
+          final bookingId = id is int ? id : int.tryParse('$id');
+          final patientId = booking['user_id'] is int
+              ? booking['user_id'] as int
+              : int.tryParse('${booking['user_id']}');
+          if (bookingId != null) {
+            await syncAftercareReminders(bookingId, userId: patientId);
+          }
+        } catch (e) {
+          debugPrint('Gagal menjadwalkan pengingat aftercare: $e');
         }
       }
 

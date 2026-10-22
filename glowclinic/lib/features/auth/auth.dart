@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:local_auth/local_auth.dart';
 
 import 'package:glowclinic/core/core.dart';
 import 'package:glowclinic/features/home/patient_home.dart';
@@ -106,6 +107,8 @@ class GlowClinicBrand extends StatelessWidget {
 
 Future<void> startSession(int id) async {
   myId = id;
+  sessionLastActivity = DateTime.now();
+  sessionRevision.value++;
 
   await store.write(key: 'uid', value: '$id');
   await store.write(
@@ -114,6 +117,10 @@ Future<void> startSession(int id) async {
         '${DateTime.now().add(const Duration(hours: 24)).millisecondsSinceEpoch}',
   );
   await store.write(key: 'tok', value: newSalt());
+  await store.write(
+    key: 'last_activity',
+    value: '${sessionLastActivity!.millisecondsSinceEpoch}',
+  );
   await store.write(key: 'last_uid', value: '$id');
 }
 
@@ -121,6 +128,7 @@ Future<bool> loadSession() async {
   try {
     final u = await store.read(key: 'uid');
     final e = await store.read(key: 'exp');
+    final lastActivityRaw = await store.read(key: 'last_activity');
 
     if (u == null || e == null) {
       return false;
@@ -137,6 +145,17 @@ Future<bool> loadSession() async {
     }
 
     myId = userId;
+    final lastActivityMs = int.tryParse(lastActivityRaw ?? '');
+    sessionLastActivity = lastActivityMs == null
+        ? DateTime.now()
+        : DateTime.fromMillisecondsSinceEpoch(lastActivityMs);
+    if (lastActivityMs == null) {
+      await store.write(
+        key: 'last_activity',
+        value: '${sessionLastActivity!.millisecondsSinceEpoch}',
+      );
+    }
+    sessionRevision.value++;
     return true;
   } catch (_) {
     try {
@@ -150,8 +169,10 @@ Future<bool> loadSession() async {
 
 Future<void> clearSession() async {
   myId = null;
+  sessionLastActivity = null;
+  sessionRevision.value++;
 
-  for (final key in ['uid', 'exp', 'tok']) {
+  for (final key in ['uid', 'exp', 'tok', 'last_activity']) {
     await store.delete(key: key);
   }
 }
@@ -527,11 +548,114 @@ class _LoginScreenState extends State<LoginScreen> {
   bool _isLoading = false;
   String? _errorMessage;
   bool _isEmailNotFound = false;
+  bool _biometricLoginStarted = false;
+  final LocalAuthentication _localAuth = LocalAuthentication();
 
   @override
   void initState() {
     super.initState();
     _emailController = TextEditingController(text: widget.initialEmail ?? '');
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _tryBiometricLogin();
+    });
+  }
+
+  Future<void> _tryBiometricLogin() async {
+    if (_biometricLoginStarted || !mounted) return;
+    _biometricLoginStarted = true;
+
+    try {
+      if (!await isBiometricLoginEnabled()) return;
+
+      final savedUserId = await biometricLoginUserId();
+      if (savedUserId == null) return;
+
+      final supported = await _localAuth.isDeviceSupported();
+      final canCheck = await _localAuth.canCheckBiometrics;
+      final available = canCheck
+          ? await _localAuth.getAvailableBiometrics()
+          : <BiometricType>[];
+
+      if (!supported || available.isEmpty || !mounted) return;
+
+      setState(() {
+        _isLoading = true;
+        _errorMessage = null;
+        _isEmailNotFound = false;
+      });
+
+      final authenticated = await _localAuth.authenticate(
+        localizedReason: 'Verifikasi identitas untuk masuk ke GlowClinic',
+        options: const AuthenticationOptions(
+          biometricOnly: true,
+          stickyAuth: true,
+        ),
+      );
+
+      if (!mounted) return;
+
+      if (authenticated) {
+        await resetBiometricFailures();
+        final rows = await qry(
+          'SELECT id FROM users WHERE id = ? LIMIT 1',
+          [savedUserId],
+        );
+
+        if (rows.isEmpty) {
+          await setBiometricLoginEnabled(false);
+          setState(() {
+            _isLoading = false;
+            _errorMessage =
+                'Akun biometrik tidak ditemukan. Silakan login dengan password.';
+          });
+          return;
+        }
+
+        final userId = int.tryParse(rows.first['id'].toString());
+        if (userId == null) {
+          setState(() {
+            _isLoading = false;
+            _errorMessage =
+                'Akun tidak valid. Silakan login dengan password.';
+          });
+          return;
+        }
+
+        await startSession(userId);
+        if (!mounted) return;
+        await goHome(context);
+        return;
+      }
+
+      final failures = await recordBiometricFailure();
+      if (!mounted) return;
+
+      setState(() {
+        _isLoading = false;
+        _errorMessage = failures >= 3
+            ? 'Biometrik gagal 3 kali dan dinonaktifkan. Silakan login dengan password.'
+            : 'Verifikasi biometrik gagal atau dibatalkan. Silakan gunakan password.';
+      });
+    } catch (e) {
+      debugPrint('[AUTH] Automatic biometric login failed: $e');
+      if (!mounted) return;
+
+      final failures = await recordBiometricFailure();
+      if (!mounted) return;
+
+      setState(() {
+        _isLoading = false;
+        _errorMessage = failures >= 3
+            ? 'Biometrik gagal 3 kali dan dinonaktifkan. Silakan login dengan password.'
+            : 'Biometrik tidak berhasil. Silakan login dengan password.';
+      });
+    } finally {
+      if (mounted && _isLoading) {
+        setState(() {
+          _isLoading = false;
+        });
+      }
+    }
   }
 
   @override
@@ -652,6 +776,12 @@ class _LoginScreenState extends State<LoginScreen> {
 
       final userId = user['id'] as int;
       debugPrint('[AUTH] Login berhasil! userId=$userId, role=$userRole. Mengarahkan ke halaman utama...');
+
+      if (await isBiometricLoginEnabled()) {
+        await store.write(key: 'biometric_uid', value: '$userId');
+        await resetBiometricFailures();
+      }
+
       await startSession(userId);
 
       if (!mounted) return;

@@ -63,10 +63,14 @@ class GlowBotService {
 
     buffer.writeln('LAYANAN & TREATMENT TERSEDIA:');
     if (treatments.isEmpty) {
-      buffer.writeln('  * Facial Medis (Kategori: Facial, Durasi: 60 menit, Harga: Rp 350.000): Pembersihan mendalam dan perawatan kesehatan kulit wajah.');
-      buffer.writeln('  * Laser Rejuvenation (Kategori: Laser, Durasi: 45 menit, Harga: Rp 1.200.000): Peremajaan kulit wajah dengan teknologi laser terkini.');
-      buffer.writeln('  * Chemical Peeling (Kategori: Peeling, Durasi: 40 menit, Harga: Rp 600.000): Pengelupasan lapisan sel kulit mati terkendali untuk regenerasi kulit.');
-      buffer.writeln('  * Konsultasi Dokter (Kategori: Konsultasi, Durasi: 20 menit, Harga: Rp 150.000): Konsultasi mendalam kondisi kulit bersama dokter ahli.');
+      buffer.writeln(
+          '  * Facial Medis (Kategori: Facial, Durasi: 60 menit, Harga: Rp 350.000): Pembersihan mendalam dan perawatan kesehatan kulit wajah.');
+      buffer.writeln(
+          '  * Laser Rejuvenation (Kategori: Laser, Durasi: 45 menit, Harga: Rp 1.200.000): Peremajaan kulit wajah dengan teknologi laser terkini.');
+      buffer.writeln(
+          '  * Chemical Peeling (Kategori: Peeling, Durasi: 40 menit, Harga: Rp 600.000): Pengelupasan lapisan sel kulit mati terkendali untuk regenerasi kulit.');
+      buffer.writeln(
+          '  * Konsultasi Dokter (Kategori: Konsultasi, Durasi: 20 menit, Harga: Rp 150.000): Konsultasi mendalam kondisi kulit bersama dokter ahli.');
     } else {
       for (final t in treatments) {
         final nama = t['nama'] ?? '';
@@ -74,15 +78,19 @@ class GlowBotService {
         final durasi = t['durasi_menit'] ?? 0;
         final harga = t['harga_idr'] ?? 0;
         final desc = t['deskripsi'] ?? '';
-        buffer.writeln('  * $nama (Kategori: $kat, Durasi: $durasi menit, Harga: Rp $harga): $desc');
+        buffer.writeln(
+            '  * $nama (Kategori: $kat, Durasi: $durasi menit, Harga: Rp $harga): $desc');
       }
     }
 
     buffer.writeln('CABANG KLINIK & JAM BUKA:');
     if (branches.isEmpty) {
-      buffer.writeln('  * GlowClinic Pusat: Area pusat Kota Yogyakarta (Jam operasional: 09:00 - 18:00)');
-      buffer.writeln('  * GlowClinic Sleman: Area Sleman, Yogyakarta (Jam operasional: 09:00 - 18:00)');
-      buffer.writeln('  * GlowClinic Bantul: Area Bantul, Yogyakarta (Jam operasional: 09:00 - 18:00)');
+      buffer.writeln(
+          '  * GlowClinic Pusat: Area pusat Kota Yogyakarta (Jam operasional: 09:00 - 18:00)');
+      buffer.writeln(
+          '  * GlowClinic Sleman: Area Sleman, Yogyakarta (Jam operasional: 09:00 - 18:00)');
+      buffer.writeln(
+          '  * GlowClinic Bantul: Area Bantul, Yogyakarta (Jam operasional: 09:00 - 18:00)');
     } else {
       for (final b in branches) {
         final nama = b['nama'] ?? '';
@@ -94,9 +102,12 @@ class GlowBotService {
 
     buffer.writeln('TIM DOKTER & JADWAL:');
     if (doctors.isEmpty) {
-      buffer.writeln('  * dr. Rina Aulia, Sp.KK (Dermatologi): Pemeriksaan dan perawatan kesehatan kulit.');
-      buffer.writeln('  * dr. Bima Pratama (Estetika): Perawatan dan estetika kulit wajah.');
-      buffer.writeln('  * dr. Nadia Putri (Dermatologi): Spesialis kondisi kulit dan jerawat.');
+      buffer.writeln(
+          '  * dr. Rina Aulia, Sp.KK (Dermatologi): Pemeriksaan dan perawatan kesehatan kulit.');
+      buffer.writeln(
+          '  * dr. Bima Pratama (Estetika): Perawatan dan estetika kulit wajah.');
+      buffer.writeln(
+          '  * dr. Nadia Putri (Dermatologi): Spesialis kondisi kulit dan jerawat.');
     } else {
       for (final d in doctors) {
         final nama = d['nama'] ?? '';
@@ -308,7 +319,8 @@ class GlowBotService {
     } catch (_) {}
 
     // Jangan pernah membocorkan token / api key dalam pesan error
-    if (detail.toLowerCase().contains('key') && detail.toLowerCase().contains('api')) {
+    if (detail.toLowerCase().contains('key') &&
+        detail.toLowerCase().contains('api')) {
       detail = 'Otentikasi API key tidak valid.';
     }
 
@@ -454,9 +466,8 @@ class _CS extends State<ChatScreen> {
     scrollToBottom();
 
     // Pastikan System Prompt sudah siap
-    final systemPrompt = ctx.isNotEmpty
-        ? ctx
-        : GlowBotService.buildSystemPrompt();
+    final systemPrompt =
+        ctx.isNotEmpty ? ctx : GlowBotService.buildSystemPrompt();
 
     final answer = await GlowBotService.generateReply(
       apiKey: kGemini,
@@ -494,6 +505,7 @@ class _CS extends State<ChatScreen> {
   @override
   Widget build(BuildContext context) {
     return Column(
+      key: const ValueKey('glowbot-chat'),
       children: [
         Expanded(
           child: ListView(
@@ -520,19 +532,23 @@ class _CS extends State<ChatScreen> {
               children: [
                 _QuickChip(
                   label: '💆‍♀️ Layanan & Harga',
-                  onTap: () => send('Apa saja layanan treatment dan harganya di GlowClinic?'),
+                  onTap: () => send(
+                      'Apa saja layanan treatment dan harganya di GlowClinic?'),
                 ),
                 _QuickChip(
                   label: '📍 Cabang & Jam Buka',
-                  onTap: () => send('Di mana saja lokasi cabang GlowClinic dan jam bukanya?'),
+                  onTap: () => send(
+                      'Di mana saja lokasi cabang GlowClinic dan jam bukanya?'),
                 ),
                 _QuickChip(
                   label: '📅 Cara Booking',
-                  onTap: () => send('Bagaimana cara booking treatment di aplikasi?'),
+                  onTap: () =>
+                      send('Bagaimana cara booking treatment di aplikasi?'),
                 ),
                 _QuickChip(
                   label: '✨ Tips Perawatan Wajah',
-                  onTap: () => send('Apa persiapan sebelum melakukan facial atau laser?'),
+                  onTap: () => send(
+                      'Apa persiapan sebelum melakukan facial atau laser?'),
                 ),
               ],
             ),
@@ -553,7 +569,7 @@ class _CS extends State<ChatScreen> {
           ),
         ),
         Padding(
-          padding: const EdgeInsets.all(8),
+          padding: const EdgeInsets.fromLTRB(12, 8, 12, 12),
           child: Row(
             children: [
               Expanded(
@@ -562,24 +578,32 @@ class _CS extends State<ChatScreen> {
                   onSubmitted: busy ? null : (_) => send(),
                   textInputAction: TextInputAction.send,
                   enabled: !busy,
-                  decoration: const InputDecoration(
+                  decoration: InputDecoration(
                     hintText: 'Tulis pertanyaan...',
-                    border: OutlineInputBorder(),
                     contentPadding: EdgeInsets.symmetric(
                       horizontal: 14,
                       vertical: 10,
                     ),
+                    suffixIcon: Icon(
+                      Icons.auto_awesome_rounded,
+                      size: 18,
+                      color: Color(0xFFB86F84),
+                    ),
                   ),
                 ),
               ),
-              const SizedBox(width: 6),
-              IconButton(
-                tooltip: 'Kirim pesan',
-                icon: Icon(
-                  Icons.send_rounded,
-                  color: busy ? Colors.grey : const Color(0xFF87364B),
+              const SizedBox(width: 8),
+              Material(
+                color: busy ? const Color(0xFFEAD8DE) : const Color(0xFF641F35),
+                shape: const CircleBorder(),
+                child: IconButton(
+                  tooltip: 'Kirim pesan',
+                  icon: const Icon(
+                    Icons.arrow_upward_rounded,
+                    color: Colors.white,
+                  ),
+                  onPressed: busy ? null : () => send(),
                 ),
-                onPressed: busy ? null : () => send(),
               ),
             ],
           ),
@@ -717,8 +741,9 @@ class _TypingBubbleState extends State<_TypingBubble>
               mainAxisSize: MainAxisSize.min,
               children: List.generate(3, (i) {
                 final t = (_c.value - i * 0.18) % 1.0;
-                final double wave =
-                    t < 0.5 ? (1 - (t * 4 - 1).abs()).clamp(0.0, 1.0).toDouble() : 0.0;
+                final double wave = t < 0.5
+                    ? (1 - (t * 4 - 1).abs()).clamp(0.0, 1.0).toDouble()
+                    : 0.0;
 
                 return Padding(
                   padding: EdgeInsets.only(right: i < 2 ? 4 : 0),

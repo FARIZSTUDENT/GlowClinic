@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:local_auth/local_auth.dart';
 import 'package:glowclinic/core/core.dart';
 import 'package:glowclinic/features/notif/notif.dart';
 import 'package:glowclinic/features/lbs/lbs.dart';
@@ -12,6 +13,69 @@ class SettingsScreen extends StatefulWidget {
 }
 
 class _ST extends State<SettingsScreen> {
+  final LocalAuthentication _localAuth = LocalAuthentication();
+  bool _biometricEnabled = false;
+  bool _checkingBiometricSetting = true;
+
+  @override
+  void initState() {
+    super.initState();
+    _loadBiometricSetting();
+  }
+
+  Future<void> _loadBiometricSetting() async {
+    final enabled = await isBiometricLoginEnabled();
+    if (!mounted) return;
+    setState(() {
+      _biometricEnabled = enabled;
+      _checkingBiometricSetting = false;
+    });
+  }
+
+  Future<void> _toggleBiometric(bool enabled) async {
+    if (enabled) {
+      try {
+        final supported = await _localAuth.isDeviceSupported();
+        final canCheck = await _localAuth.canCheckBiometrics;
+        final available = canCheck
+            ? await _localAuth.getAvailableBiometrics()
+            : <BiometricType>[];
+
+        if (!supported || available.isEmpty) {
+          if (mounted) {
+            snack(context, 'Perangkat belum memiliki biometrik yang tersedia');
+          }
+          return;
+        }
+      } catch (e) {
+        debugPrint('[SETTINGS] Checking biometrics failed: $e');
+        if (mounted) {
+          snack(context, 'Biometrik tidak dapat digunakan pada perangkat ini');
+        }
+        return;
+      }
+    }
+
+    try {
+      await setBiometricLoginEnabled(enabled, userId: myId);
+      if (!mounted) return;
+      setState(() {
+        _biometricEnabled = enabled;
+      });
+      snack(
+        context,
+        enabled
+            ? 'Login biometrik diaktifkan'
+            : 'Login biometrik dinonaktifkan',
+      );
+    } catch (e) {
+      debugPrint('[SETTINGS] Updating biometric preference failed: $e');
+      if (mounted) {
+        snack(context, 'Gagal menyimpan pengaturan biometrik');
+      }
+    }
+  }
+
   Future<void> updateBranchLocation() async {
     final position = await myPos();
 
@@ -70,12 +134,18 @@ class _ST extends State<SettingsScreen> {
       appBar: AppBar(title: const Text('Pengaturan')),
       body: ListView(
         children: [
-          const ListTile(
-            leading: Icon(Icons.fingerprint_rounded),
-            title: Text('Login biometrik'),
+          SwitchListTile(
+            secondary: const Icon(Icons.fingerprint_rounded),
+            title: const Text('Login biometrik'),
             subtitle: Text(
-              'Selalu aktif. Password dipakai setelah biometrik gagal 3 kali.',
+              _checkingBiometricSetting
+                  ? 'Memeriksa pengaturan biometrik...'
+                  : _biometricEnabled
+                      ? 'Aktif. Otomatis muncul saat login; mati setelah 3 kegagalan.'
+                      : 'Nonaktif. Aktifkan untuk login dengan biometrik.',
             ),
+            value: _biometricEnabled,
+            onChanged: _checkingBiometricSetting ? null : _toggleBiometric,
           ),
           ListTile(
             leading: const Icon(Icons.my_location),

@@ -1,5 +1,6 @@
 
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
+import 'package:glowclinic/core/core.dart';
 import 'package:timezone/data/latest.dart' as tzdata;
 import 'package:timezone/timezone.dart' as tz;
 
@@ -217,5 +218,77 @@ Future<void> schedulePromos() async {
 
       n++;
     }
+  }
+}
+
+
+int _aftercareId(int bookingId, int activity) =>
+    2000000 + bookingId * 10 + activity;
+
+Future<void> cancelAftercareReminders(int bookingId) async {
+  for (var activity = 1; activity <= 3; activity++) {
+    await _np.cancel(_aftercareId(bookingId, activity));
+  }
+}
+
+/// Menjadwalkan pengingat 2 jam setelah treatment selesai, hanya untuk
+/// aktivitas yang belum dilakukan. Setiap sinkronisasi membangun ulang
+/// pengingat agar notifikasi lama tidak tertinggal setelah aktivitas selesai.
+Future<void> syncAftercareReminders(int bookingId, {int? userId}) async {
+  await cancelAftercareReminders(bookingId);
+
+  final uid = userId ?? myId;
+  if (uid == null) return;
+
+  final rows = await qry(
+    'SELECT id, user_id, status, completed_at, spin_hadiah '
+    'FROM bookings WHERE id = ? AND user_id = ?',
+    [bookingId, uid],
+  );
+  if (rows.isEmpty) return;
+
+  final booking = rows.first;
+  if ('${booking['status']}' != 'done') return;
+
+  final completedAt = DateTime.tryParse('${booking['completed_at'] ?? ''}');
+  if (completedAt == null) return;
+  final remindAt = completedAt.toLocal().add(const Duration(hours: 2));
+  if (!remindAt.isAfter(DateTime.now())) return;
+
+  final journals = await qry(
+    'SELECT id FROM skin_journals WHERE booking_id = ? AND user_id = ? LIMIT 1',
+    [bookingId, uid],
+  );
+  if (journals.isEmpty) {
+    await notify(
+      _aftercareId(bookingId, 1),
+      'Jangan lupa jurnal kulit 📝',
+      'Catat kondisi kulitmu setelah treatment di GlowClinic.',
+      remindAt,
+    );
+  }
+
+  final prize = booking['spin_hadiah']?.toString();
+  final spinDone = prize != null && prize.trim().isNotEmpty && prize != 'null';
+  if (!spinDone) {
+    await notify(
+      _aftercareId(bookingId, 2),
+      'Waktunya GlowSpin 🎰',
+      'Yuk, mainkan GlowSpin untuk mendapatkan hadiahmu!',
+      remindAt,
+    );
+  }
+
+  final reviews = await qry(
+    'SELECT id FROM feedback WHERE booking_id = ? AND user_id = ? LIMIT 1',
+    [bookingId, uid],
+  );
+  if (reviews.isEmpty) {
+    await notify(
+      _aftercareId(bookingId, 3),
+      'Bagikan pengalamanmu ⭐',
+      'Yuk, berikan ulasan untuk treatment GlowClinic-mu.',
+      remindAt,
+    );
   }
 }

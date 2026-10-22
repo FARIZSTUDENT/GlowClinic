@@ -14,6 +14,58 @@ late Database db;
 const store = FlutterSecureStorage();
 
 int? myId;
+DateTime? sessionLastActivity;
+
+/// Berubah setiap kali status sesi login berubah, agar SessionGuard ikut sinkron.
+final ValueNotifier<int> sessionRevision = ValueNotifier<int>(0);
+
+
+/// Preferensi biometrik disimpan secara aman pada perangkat.
+const String _biometricEnabledKey = 'biometric_enabled';
+const String _biometricFailuresKey = 'biometric_failures';
+const String _biometricUserIdKey = 'biometric_uid';
+
+Future<bool> isBiometricLoginEnabled() async {
+  return await store.read(key: _biometricEnabledKey) == 'true';
+}
+
+Future<void> setBiometricLoginEnabled(bool enabled, {int? userId}) async {
+  await store.write(
+    key: _biometricEnabledKey,
+    value: enabled ? 'true' : 'false',
+  );
+
+  if (enabled) {
+    await store.write(key: _biometricFailuresKey, value: '0');
+    final id = userId ?? myId;
+    if (id != null) {
+      await store.write(key: _biometricUserIdKey, value: '$id');
+    }
+  } else {
+    await store.write(key: _biometricFailuresKey, value: '0');
+  }
+}
+
+Future<int?> biometricLoginUserId() async {
+  final raw = await store.read(key: _biometricUserIdKey);
+  return int.tryParse(raw ?? '');
+}
+
+Future<int> recordBiometricFailure() async {
+  final raw = await store.read(key: _biometricFailuresKey);
+  final failures = (int.tryParse(raw ?? '') ?? 0) + 1;
+  await store.write(key: _biometricFailuresKey, value: '$failures');
+
+  if (failures >= 3) {
+    await setBiometricLoginEnabled(false);
+  }
+
+  return failures;
+}
+
+Future<void> resetBiometricFailures() async {
+  await store.write(key: _biometricFailuresKey, value: '0');
+}
 
 /// Naikkan nilainya agar daftar booking memuat ulang data.
 final ValueNotifier<int> bookingRefresh = ValueNotifier<int>(0);
@@ -80,7 +132,7 @@ const _schema = [
 
   "create table treatments(id integer primary key autoincrement, nama text, kategori text, deskripsi text, durasi_menit integer, harga_idr integer)",
 
-  "create table bookings(id integer primary key autoincrement, user_id integer, doctor_id integer, branch_id integer, treatment_id integer, treatment_nama text, waktu_utc text, durasi_menit integer default 60, status text default 'pending', status_bayar text default 'belum_bayar', metode_bayar text, kode_bayar text, total_idr integer, mata_uang text default 'IDR', kurs real default 1.0, total_bayar real, catatan_dokter text, spin_hadiah text, created_at text default current_timestamp)",
+  "create table bookings(id integer primary key autoincrement, user_id integer, doctor_id integer, branch_id integer, treatment_id integer, treatment_nama text, waktu_utc text, durasi_menit integer default 60, status text default 'pending', status_bayar text default 'belum_bayar', metode_bayar text, kode_bayar text, total_idr integer, mata_uang text default 'IDR', kurs real default 1.0, total_bayar real, catatan_dokter text, spin_hadiah text, completed_at text, created_at text default current_timestamp)",
 
   "create table doctor_schedules(id integer primary key autoincrement, doctor_id integer, branch_id integer, hari integer, jam_mulai text, jam_selesai text, catatan text)",
 
@@ -390,7 +442,7 @@ Future<void> initDb() async {
 
   db = await openDatabase(
     path,
-    version: 7,
+    version: 8,
     onCreate: (database, version) async {
       for (final sql in _schema) {
         await database.execute(sql);
@@ -484,6 +536,13 @@ Future<void> initDb() async {
           );
         } catch (_) {}
       }
+      if (oldVersion < 8) {
+        try {
+          await database.execute(
+            'ALTER TABLE bookings ADD COLUMN completed_at TEXT',
+          );
+        } catch (_) {}
+      }
     },
   );
 
@@ -565,33 +624,53 @@ Future<void> initDb() async {
     }
   }
 
-  // Memasukkan jadwal praktik dokter jika tabel belum memiliki data.
-  final schedulesCount = await db.query(
-    'doctor_schedules',
-    columns: ['id'],
-    limit: 1,
-  );
-  if (schedulesCount.isEmpty) {
-    for (final s in _seedDoctorSchedules) {
-      final docName = s['doctor_nama'] as String;
-      final docRow = await db.query(
-        'doctors',
-        columns: ['id'],
-        where: 'nama = ?',
-        whereArgs: [docName],
-        limit: 1,
-      );
-      if (docRow.isNotEmpty) {
-        final doctorId = docRow.first['id'] as int;
-        await db.insert('doctor_schedules', {
-          'doctor_id': doctorId,
-          'branch_id': s['branch_id'],
-          'hari': s['hari'],
-          'jam_mulai': s['jam_mulai'],
-          'jam_selesai': s['jam_selesai'],
-          'catatan': s['catatan'],
-        });
-      }
+  // Sinkronkan jadwal praktik agar setiap dokter hanya terdaftar pada cabang
+  // utama yang tercatat di doctors.branch_id. Ada 15 dokter dan 3 cabang:
+  // pembagian dasar 5 dokter per cabang.
+  try {
+    await db.execute('''
+      DELETE FROM doctor_schedules
+      WHERE doctor_id IN (SELECT id FROM doctors)
+        AND branch_id != (
+          SELECT branch_id FROM doctors WHERE doctors.id = doctor_schedules.doctor_id
+        )
+    ''');
+  } catch (e) {
+    debugPrint('[DB] Sinkronisasi cabang jadwal dokter dilewati: $e');
+  }
+
+  for (final schedule in _seedDoctorSchedules) {
+    final doctorName = schedule['doctor_nama'] as String;
+    final scheduleBranchId = (schedule['branch_id'] as num).toInt();
+    final doctorRows = await db.query(
+      'doctors',
+      columns: ['id', 'branch_id'],
+      where: 'nama = ?',
+      whereArgs: [doctorName],
+      limit: 1,
+    );
+    if (doctorRows.isEmpty) continue;
+
+    final doctorId = (doctorRows.first['id'] as num).toInt();
+    final primaryBranchId = (doctorRows.first['branch_id'] as num?)?.toInt();
+    if (primaryBranchId != scheduleBranchId) continue;
+
+    final existingSchedule = await db.query(
+      'doctor_schedules',
+      columns: ['id'],
+      where: 'doctor_id = ? AND branch_id = ? AND hari = ?',
+      whereArgs: [doctorId, scheduleBranchId, schedule['hari']],
+      limit: 1,
+    );
+    if (existingSchedule.isEmpty) {
+      await db.insert('doctor_schedules', {
+        'doctor_id': doctorId,
+        'branch_id': scheduleBranchId,
+        'hari': schedule['hari'],
+        'jam_mulai': schedule['jam_mulai'],
+        'jam_selesai': schedule['jam_selesai'],
+        'catatan': schedule['catatan'],
+      });
     }
   }
 

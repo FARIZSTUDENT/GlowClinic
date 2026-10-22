@@ -26,11 +26,11 @@ class _PH extends State<PatientHome> {
     setupPatientPromos();
   }
 
-  static const Color background = Color(0xFFFFF7F9);
-  static const Color primary = Color(0xFF87364B);
-  static const Color lightPurple = Color(0xFFFFE1EA);
-  static const Color textColor = Color(0xFF59434C);
-  static const Color mutedColor = Color(0xFFB08C99);
+  static const Color background = Color(0xFFFFF8F6);
+  static const Color primary = Color(0xFF641F35);
+  static const Color lightPurple = Color(0xFFF3E4E8);
+  static const Color textColor = Color(0xFF49343B);
+  static const Color mutedColor = Color(0xFF9A7B84);
 
   static const destinations = <NavigationDestination>[
     NavigationDestination(
@@ -72,22 +72,20 @@ class _PH extends State<PatientHome> {
 
     return Scaffold(
       backgroundColor: background,
-
       appBar: AppBar(
         backgroundColor: background,
         surfaceTintColor: Colors.transparent,
         elevation: 0,
         scrolledUnderElevation: 0,
-
-        titleSpacing: 16,
-
+        toolbarHeight: 72,
+        titleSpacing: 12,
         title: Row(
           children: [
             // LOGO GLOWCLINIC
             Image.asset(
               'assets/images/glowclinic_logo.png',
-              width: 42,
-              height: 42,
+              width: 40,
+              height: 40,
               fit: BoxFit.contain,
               errorBuilder: (context, error, stackTrace) {
                 return const SizedBox(
@@ -102,7 +100,7 @@ class _PH extends State<PatientHome> {
               },
             ),
 
-            const SizedBox(width: 8),
+            const SizedBox(width: 10),
 
             // NAMA BRAND DAN TAGLINE
             const Expanded(
@@ -115,7 +113,7 @@ class _PH extends State<PatientHome> {
                     style: TextStyle(
                       fontFamily: 'Georgia',
                       color: textColor,
-                      fontSize: 22,
+                      fontSize: 21,
                       fontWeight: FontWeight.w700,
                       letterSpacing: -0.6,
                       height: 1.15,
@@ -123,10 +121,10 @@ class _PH extends State<PatientHome> {
                   ),
                   SizedBox(height: 3),
                   Text(
-                    'Book Your Dermatologist, Track Your Glow',
+                    'Perawatan kulit yang lebih personal',
                     style: TextStyle(
                       color: mutedColor,
-                      fontSize: 10,
+                      fontSize: 10.5,
                       fontWeight: FontWeight.w500,
                       height: 1.2,
                     ),
@@ -136,18 +134,15 @@ class _PH extends State<PatientHome> {
             ),
           ],
         ),
-
         actions: const [
           NotifBell(),
           SizedBox(width: 8),
         ],
       ),
-
       body: IndexedStack(
         index: i,
         children: pages,
       ),
-
       bottomNavigationBar: Container(
         decoration: BoxDecoration(
           color: Colors.white,
@@ -166,31 +161,25 @@ class _PH extends State<PatientHome> {
           data: NavigationBarThemeData(
             backgroundColor: Colors.transparent,
             elevation: 0,
-            height: 76,
+            height: 74,
             indicatorColor: lightPurple,
             indicatorShape: RoundedRectangleBorder(
               borderRadius: BorderRadius.circular(18),
             ),
-            labelTextStyle:
-                WidgetStateProperty.resolveWith<TextStyle>(
+            labelTextStyle: WidgetStateProperty.resolveWith<TextStyle>(
               (states) {
-                final selected =
-                    states.contains(WidgetState.selected);
+                final selected = states.contains(WidgetState.selected);
 
                 return TextStyle(
                   fontSize: 10,
-                  fontWeight: selected
-                      ? FontWeight.w700
-                      : FontWeight.w500,
+                  fontWeight: selected ? FontWeight.w700 : FontWeight.w500,
                   color: selected ? primary : mutedColor,
                 );
               },
             ),
-            iconTheme:
-                WidgetStateProperty.resolveWith<IconThemeData>(
+            iconTheme: WidgetStateProperty.resolveWith<IconThemeData>(
               (states) {
-                final selected =
-                    states.contains(WidgetState.selected);
+                final selected = states.contains(WidgetState.selected);
 
                 return IconThemeData(
                   size: 22,

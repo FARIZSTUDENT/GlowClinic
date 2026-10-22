@@ -87,7 +87,23 @@ class _SH extends State<StaffHome> {
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        title: const Text('Dashboard Staf'),
+        titleSpacing: 20,
+        title: const Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Text('Dashboard Staf'),
+            SizedBox(height: 2),
+            Text(
+              'Kelola operasional GlowClinic',
+              style: TextStyle(
+                color: Color(0xFF9A7B84),
+                fontSize: 11,
+                fontWeight: FontWeight.w500,
+              ),
+            ),
+          ],
+        ),
         actions: [
           const NotifBell(),
           PopupMenuButton<String>(
@@ -115,9 +131,11 @@ class _SH extends State<StaffHome> {
               }
             },
             itemBuilder: (_) => const [
-              PopupMenuItem(value: 'promo', child: Text('Kirim promo ke pasien')),
+              PopupMenuItem(
+                  value: 'promo', child: Text('Kirim promo ke pasien')),
               PopupMenuItem(value: 'ulasan', child: Text('Ulasan pasien')),
-              PopupMenuItem(value: 'chain', child: Text('Verifikasi blockchain')),
+              PopupMenuItem(
+                  value: 'chain', child: Text('Verifikasi blockchain')),
               PopupMenuItem(value: 'settings', child: Text('Pengaturan')),
             ],
           ),

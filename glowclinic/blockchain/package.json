@@ -1,0 +1,17 @@
+{
+  "name": "glowclinic-blockchain",
+  "private": true,
+  "version": "1.0.0",
+  "scripts": {
+    "compile": "node scripts/compile.js",
+    "deploy": "node scripts/deploy.js",
+    "test": "node scripts/test.js"
+  },
+  "dependencies": {
+    "ethers": "6.13.4",
+    "solc": "0.8.26"
+  },
+  "devDependencies": {
+    "hardhat": "2.22.17"
+  }
+}

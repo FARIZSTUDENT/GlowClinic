@@ -22,24 +22,32 @@ class _SH extends State<StaffHome> {
 
   Future<void> verifyChain() async {
     try {
-      final valid = await Chain.valid();
+      final r = await Chain.verifyOnChain();
 
       if (!mounted) return;
+
+      final ok = r.ok;
+      final lines = <String>[
+        r.localValid
+            ? 'Rantai lokal: valid (${r.total} blok).'
+            : 'Rantai lokal: RUSAK, data pernah diubah.',
+        'Terbukti di blockchain: ${r.anchored} blok.',
+        if (r.pending > 0) 'Menunggu dikirim: ${r.pending} blok.',
+        if (r.missing > 0)
+          'Tidak ditemukan di blockchain: ${r.missing} blok.',
+        if (r.error != null) 'Blockchain: ${r.error}',
+      ];
 
       await showDialog<void>(
         context: context,
         builder: (dialogContext) => AlertDialog(
           icon: Icon(
-            valid ? Icons.verified : Icons.warning_amber,
-            color: valid ? Colors.green : Colors.red,
+            ok ? Icons.verified : Icons.warning_amber,
+            color: ok ? Colors.green : Colors.red,
             size: 36,
           ),
-          title: Text(valid ? 'Rantai VALID' : 'Rantai RUSAK'),
-          content: Text(
-            valid
-                ? 'Integritas rantai blockchain berhasil diverifikasi.'
-                : 'Verifikasi gagal. Periksa data rantai blockchain.',
-          ),
+          title: Text(ok ? 'Rantai VALID' : 'Perlu diperiksa'),
+          content: Text(lines.join('\n')),
           actions: [
             TextButton(
               onPressed: () => Navigator.pop(dialogContext),
